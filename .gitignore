@@ -1,0 +1,21 @@
+# Collector output can contain tenant, device, user, policy, and app information.
+**/runs/
+**/*.json
+!Intune/IntuneReadinessCollector/query-manifest.json
+!Intune/IntuneReadinessCollector/intune-readiness.schema.json
+
+# Local credentials, logs, and generated review artifacts.
+.env
+.env.*
+*.pfx
+*.p12
+*.pem
+*.key
+*.log
+*.clixml
+*.zip
+TestResults*.xml
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store

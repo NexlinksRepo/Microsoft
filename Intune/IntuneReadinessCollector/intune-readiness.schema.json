@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/schemas/intune-readiness-evidence-1.0.0.json",
+  "title": "Intune Endpoint Readiness Evidence",
+  "type": "object",
+  "required": ["schemaVersion", "assessmentType", "scoring", "tenant", "collection", "categories", "warnings", "errors"],
+  "properties": {
+    "schemaVersion": { "const": "1.0.0" },
+    "assessmentType": { "const": "IntuneEndpointReadinessEvidence" },
+    "scoring": { "type": "null", "description": "Reserved. Collection never assigns RAG." },
+    "tenant": {
+      "type": "object",
+      "required": ["tenantId", "displayName", "verifiedDomains"],
+      "properties": {
+        "tenantId": { "type": ["string", "null"] },
+        "displayName": { "type": ["string", "null"] },
+        "tenantType": { "type": ["string", "null"] },
+        "createdDateTime": { "type": ["string", "null"] },
+        "verifiedDomains": { "type": "array" }
+      },
+      "additionalProperties": true
+    },
+    "collection": {
+      "type": "object",
+      "required": ["collectorName", "collectorVersion", "manifestVersion", "startedAtUtc", "completedAtUtc", "authMode", "queryRuns"],
+      "properties": {
+        "queryRuns": { "type": "array", "items": { "type": "object" } }
+      },
+      "additionalProperties": true
+    },
+    "categories": {
+      "type": "object",
+      "required": ["managedDevicesEnrollment", "compliance", "endpointSecuritySettingsCatalog", "bitLockerEncryption", "windowsUpdate", "conditionalAccess", "defender", "mobileApps", "licensing", "intuneRbac", "mamAppProtection"],
+      "additionalProperties": { "$ref": "#/$defs/category" }
+    },
+    "warnings": { "type": "array", "items": { "$ref": "#/$defs/issue" } },
+    "errors": { "type": "array", "items": { "$ref": "#/$defs/issue" } }
+  },
+  "$defs": {
+    "category": {
+      "type": "object",
+      "required": ["name", "collectionStatus", "evidenceSummary", "data", "warnings", "errors"],
+      "properties": {
+        "name": { "type": "string" },
+        "collectionStatus": { "enum": ["complete", "partial", "failed", "notCollected", "notStarted"] },
+        "evidenceSummary": { "type": "object" },
+        "data": { "type": "object" },
+        "warnings": { "type": "array", "items": { "$ref": "#/$defs/issue" } },
+        "errors": { "type": "array", "items": { "$ref": "#/$defs/issue" } }
+      },
+      "additionalProperties": false
+    },
+    "issue": {
+      "type": "object",
+      "required": ["code", "message"],
+      "properties": {
+        "queryId": { "type": ["string", "null"] },
+        "category": { "type": ["string", "null"] },
+        "code": { "type": "string" },
+        "httpStatus": { "type": ["integer", "null"] },
+        "required": { "type": "boolean" },
+        "uri": { "type": "string" },
+        "message": { "type": "string" },
+        "expectedPermissions": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": true
+    }
+  }
+}

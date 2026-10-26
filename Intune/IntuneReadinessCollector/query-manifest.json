@@ -1,0 +1,456 @@
+{
+  "manifestVersion": "1.0.1",
+  "graphBaseUri": "https://graph.microsoft.com",
+  "queries": [
+    {
+      "id": "tenant.organization",
+      "category": "tenant",
+      "apiVersion": "v1.0",
+      "path": "/organization?$select=id,displayName,tenantType,createdDateTime,verifiedDomains",
+      "permissions": [
+        "Organization.Read.All"
+      ],
+      "required": true,
+      "resultKey": "organizations"
+    },
+    {
+      "id": "enrollment.managedDevices",
+      "category": "managedDevicesEnrollment",
+      "apiVersion": "v1.0",
+      "path": "/deviceManagement/managedDevices?$select=id,deviceName,managedDeviceOwnerType,enrolledDateTime,lastSyncDateTime,operatingSystem,osVersion,managementAgent,deviceEnrollmentType,azureADDeviceId,deviceRegistrationState,complianceState,userId,userPrincipalName,manufacturer,model,isEncrypted,partnerReportedThreatState,managementState,jailBroken",
+      "permissions": [
+        "DeviceManagementManagedDevices.Read.All"
+      ],
+      "required": true,
+      "resultKey": "managedDevices"
+    },
+    {
+      "id": "enrollment.configurations",
+      "category": "managedDevicesEnrollment",
+      "apiVersion": "v1.0",
+      "path": "/deviceManagement/deviceEnrollmentConfigurations",
+      "permissions": [
+        "DeviceManagementServiceConfig.Read.All"
+      ],
+      "required": false,
+      "resultKey": "enrollmentConfigurations"
+    },
+    {
+      "id": "enrollment.autopilot",
+      "category": "managedDevicesEnrollment",
+      "apiVersion": "v1.0",
+      "path": "/deviceManagement/windowsAutopilotDeviceIdentities",
+      "permissions": [
+        "DeviceManagementServiceConfig.Read.All"
+      ],
+      "required": false,
+      "resultKey": "autopilotDevices",
+      "outputFields": [
+        "id",
+        "displayName",
+        "serialNumber",
+        "model",
+        "manufacturer",
+        "groupTag",
+        "purchaseOrderIdentifier",
+        "enrollmentState",
+        "lastContactedDateTime",
+        "azureActiveDirectoryDeviceId",
+        "managedDeviceId"
+      ]
+    },
+    {
+      "id": "enrollment.configurationAssignments",
+      "category": "managedDevicesEnrollment",
+      "apiVersion": "v1.0",
+      "pathTemplate": "/deviceManagement/deviceEnrollmentConfigurations/{id}/assignments",
+      "forEachResultKey": "enrollmentConfigurations",
+      "parentIdField": "id",
+      "permissions": [
+        "DeviceManagementServiceConfig.Read.All"
+      ],
+      "required": false,
+      "resultKey": "enrollmentConfigurationAssignments"
+    },
+    {
+      "id": "compliance.policies",
+      "category": "compliance",
+      "apiVersion": "v1.0",
+      "path": "/deviceManagement/deviceCompliancePolicies",
+      "permissions": [
+        "DeviceManagementConfiguration.Read.All"
+      ],
+      "required": true,
+      "resultKey": "policies"
+    },
+    {
+      "id": "compliance.assignments",
+      "category": "compliance",
+      "apiVersion": "v1.0",
+      "pathTemplate": "/deviceManagement/deviceCompliancePolicies/{id}/assignments",
+      "forEachResultKey": "policies",
+      "parentIdField": "id",
+      "permissions": [
+        "DeviceManagementConfiguration.Read.All"
+      ],
+      "required": false,
+      "resultKey": "assignments"
+    },
+    {
+      "id": "compliance.settingSummaries",
+      "category": "compliance",
+      "apiVersion": "v1.0",
+      "pathTemplate": "/deviceManagement/deviceCompliancePolicies/{id}/deviceSettingStateSummaries",
+      "forEachResultKey": "policies",
+      "parentIdField": "id",
+      "permissions": [
+        "DeviceManagementConfiguration.Read.All"
+      ],
+      "required": false,
+      "resultKey": "settingStateSummaries"
+    },
+    {
+      "id": "compliance.deviceStatuses",
+      "category": "compliance",
+      "apiVersion": "v1.0",
+      "pathTemplate": "/deviceManagement/deviceCompliancePolicies/{id}/deviceStatuses",
+      "forEachResultKey": "policies",
+      "parentIdField": "id",
+      "permissions": [
+        "DeviceManagementConfiguration.Read.All"
+      ],
+      "required": false,
+      "resultKey": "deviceStatuses"
+    },
+    {
+      "id": "compliance.tenantSummary",
+      "category": "compliance",
+      "apiVersion": "v1.0",
+      "path": "/deviceManagement/deviceCompliancePolicyDeviceStateSummary",
+      "permissions": [
+        "DeviceManagementConfiguration.Read.All"
+      ],
+      "required": false,
+      "resultKey": "tenantDeviceStateSummary",
+      "responseShape": "object"
+    },
+    {
+      "id": "configuration.legacyProfiles",
+      "category": "endpointSecuritySettingsCatalog",
+      "apiVersion": "v1.0",
+      "path": "/deviceManagement/deviceConfigurations",
+      "permissions": [
+        "DeviceManagementConfiguration.Read.All"
+      ],
+      "required": false,
+      "resultKey": "legacyProfiles"
+    },
+    {
+      "id": "configuration.legacyAssignments",
+      "category": "endpointSecuritySettingsCatalog",
+      "apiVersion": "v1.0",
+      "pathTemplate": "/deviceManagement/deviceConfigurations/{id}/assignments",
+      "forEachResultKey": "legacyProfiles",
+      "parentIdField": "id",
+      "permissions": [
+        "DeviceManagementConfiguration.Read.All"
+      ],
+      "required": false,
+      "resultKey": "legacyAssignments"
+    },
+    {
+      "id": "configuration.legacyDeviceStatuses",
+      "category": "endpointSecuritySettingsCatalog",
+      "apiVersion": "v1.0",
+      "pathTemplate": "/deviceManagement/deviceConfigurations/{id}/deviceStatuses",
+      "forEachResultKey": "legacyProfiles",
+      "parentIdField": "id",
+      "permissions": [
+        "DeviceManagementConfiguration.Read.All"
+      ],
+      "required": false,
+      "resultKey": "legacyDeviceStatuses"
+    },
+    {
+      "id": "configuration.modernPolicies",
+      "category": "endpointSecuritySettingsCatalog",
+      "apiVersion": "beta",
+      "betaReason": "Modern Settings Catalog and Endpoint Security configurationPolicy resources are not generally available in v1.0.",
+      "path": "/deviceManagement/configurationPolicies",
+      "permissions": [
+        "DeviceManagementConfiguration.Read.All",
+        "DeviceManagementEndpointSecurity.Read.All"
+      ],
+      "permissionMode": "any",
+      "required": false,
+      "resultKey": "modernPolicies"
+    },
+    {
+      "id": "configuration.modernSettings",
+      "category": "endpointSecuritySettingsCatalog",
+      "apiVersion": "beta",
+      "betaReason": "Settings instances for modern configuration policies are exposed through beta.",
+      "pathTemplate": "/deviceManagement/configurationPolicies/{id}/settings",
+      "forEachResultKey": "modernPolicies",
+      "parentIdField": "id",
+      "permissions": [
+        "DeviceManagementConfiguration.Read.All",
+        "DeviceManagementEndpointSecurity.Read.All"
+      ],
+      "permissionMode": "any",
+      "required": false,
+      "resultKey": "modernSettings"
+    },
+    {
+      "id": "configuration.modernAssignments",
+      "category": "endpointSecuritySettingsCatalog",
+      "apiVersion": "beta",
+      "betaReason": "Assignments for modern configurationPolicy resources follow the beta policy model.",
+      "pathTemplate": "/deviceManagement/configurationPolicies/{id}/assignments",
+      "forEachResultKey": "modernPolicies",
+      "parentIdField": "id",
+      "permissions": [
+        "DeviceManagementConfiguration.Read.All",
+        "DeviceManagementEndpointSecurity.Read.All"
+      ],
+      "permissionMode": "any",
+      "required": false,
+      "resultKey": "modernAssignments"
+    },
+    {
+      "id": "configuration.modernDeviceStatuses",
+      "category": "endpointSecuritySettingsCatalog",
+      "apiVersion": "beta",
+      "betaReason": "Modern policy status uses the beta reporting action.",
+      "pathTemplate": "/deviceManagement/reports/getConfigurationPolicyDevicesReport",
+      "forEachResultKey": "modernPolicies",
+      "parentIdField": "id",
+      "permissions": [
+        "DeviceManagementConfiguration.Read.All"
+      ],
+      "permissionMode": "any",
+      "required": false,
+      "resultKey": "modernDeviceStatuses",
+      "responseShape": "report"
+    },
+    {
+      "id": "configuration.securityIntents",
+      "category": "endpointSecuritySettingsCatalog",
+      "apiVersion": "beta",
+      "betaReason": "Older template-based Endpoint Security and security baseline policies use the intents API.",
+      "path": "/deviceManagement/intents",
+      "permissions": [
+        "DeviceManagementConfiguration.Read.All",
+        "DeviceManagementEndpointSecurity.Read.All"
+      ],
+      "permissionMode": "any",
+      "required": false,
+      "resultKey": "securityIntents"
+    },
+    {
+      "id": "updates.featureProfiles",
+      "category": "windowsUpdate",
+      "apiVersion": "beta",
+      "betaReason": "Feature update profile inventory is collected from the Intune beta surface.",
+      "path": "/deviceManagement/windowsFeatureUpdateProfiles",
+      "permissions": [
+        "DeviceManagementConfiguration.Read.All"
+      ],
+      "required": false,
+      "resultKey": "featureUpdateProfiles"
+    },
+    {
+      "id": "updates.qualityProfiles",
+      "category": "windowsUpdate",
+      "apiVersion": "beta",
+      "betaReason": "Expedited quality update profile inventory is collected from the Intune beta surface.",
+      "path": "/deviceManagement/windowsQualityUpdateProfiles",
+      "permissions": [
+        "DeviceManagementConfiguration.Read.All"
+      ],
+      "required": false,
+      "resultKey": "qualityUpdateProfiles"
+    },
+    {
+      "id": "updates.featureAssignments",
+      "category": "windowsUpdate",
+      "apiVersion": "beta",
+      "betaReason": "Feature update profile assignments are exposed through the Intune beta surface.",
+      "pathTemplate": "/deviceManagement/windowsFeatureUpdateProfiles/{id}/assignments",
+      "forEachResultKey": "featureUpdateProfiles",
+      "parentIdField": "id",
+      "permissions": [
+        "DeviceManagementConfiguration.Read.All"
+      ],
+      "required": false,
+      "resultKey": "featureUpdateAssignments"
+    },
+    {
+      "id": "updates.qualityAssignments",
+      "category": "windowsUpdate",
+      "apiVersion": "beta",
+      "betaReason": "Quality update profile assignments are exposed through the Intune beta surface.",
+      "pathTemplate": "/deviceManagement/windowsQualityUpdateProfiles/{id}/assignments",
+      "forEachResultKey": "qualityUpdateProfiles",
+      "parentIdField": "id",
+      "permissions": [
+        "DeviceManagementConfiguration.Read.All"
+      ],
+      "required": false,
+      "resultKey": "qualityUpdateAssignments"
+    },
+    {
+      "id": "conditionalAccess.policies",
+      "category": "conditionalAccess",
+      "apiVersion": "v1.0",
+      "path": "/identity/conditionalAccess/policies",
+      "permissions": [
+        "Policy.Read.All"
+      ],
+      "required": false,
+      "resultKey": "policies"
+    },
+    {
+      "id": "defender.onboardingSummary",
+      "category": "defender",
+      "apiVersion": "beta",
+      "betaReason": "The Defender for Endpoint onboarding state summary is currently documented only in beta.",
+      "path": "/deviceManagement/advancedThreatProtectionOnboardingStateSummary",
+      "permissions": [
+        "DeviceManagementConfiguration.Read.All"
+      ],
+      "required": false,
+      "resultKey": "onboardingStateSummary",
+      "responseShape": "object"
+    },
+    {
+      "id": "apps.mobileApps",
+      "category": "mobileApps",
+      "apiVersion": "v1.0",
+      "path": "/deviceAppManagement/mobileApps?$select=id,displayName,publisher,createdDateTime,lastModifiedDateTime,isFeatured,owner,developer,publishingState",
+      "permissions": [
+        "DeviceManagementApps.Read.All"
+      ],
+      "required": false,
+      "resultKey": "apps"
+    },
+    {
+      "id": "apps.assignments",
+      "category": "mobileApps",
+      "apiVersion": "v1.0",
+      "pathTemplate": "/deviceAppManagement/mobileApps/{id}/assignments",
+      "forEachResultKey": "apps",
+      "parentIdField": "id",
+      "permissions": [
+        "DeviceManagementApps.Read.All"
+      ],
+      "required": false,
+      "resultKey": "assignments"
+    },
+    {
+      "id": "licensing.subscribedSkus",
+      "category": "licensing",
+      "apiVersion": "v1.0",
+      "path": "/subscribedSkus?$select=id,skuId,skuPartNumber,capabilityStatus,consumedUnits,prepaidUnits,servicePlans",
+      "permissions": [
+        "LicenseAssignment.Read.All"
+      ],
+      "required": false,
+      "resultKey": "subscribedSkus"
+    },
+    {
+      "id": "rbac.roleDefinitions",
+      "category": "intuneRbac",
+      "apiVersion": "v1.0",
+      "path": "/deviceManagement/roleDefinitions",
+      "permissions": [
+        "DeviceManagementRBAC.Read.All"
+      ],
+      "required": false,
+      "resultKey": "roleDefinitions"
+    },
+    {
+      "id": "rbac.roleAssignments",
+      "category": "intuneRbac",
+      "apiVersion": "v1.0",
+      "path": "/deviceManagement/roleAssignments",
+      "permissions": [
+        "DeviceManagementRBAC.Read.All"
+      ],
+      "required": false,
+      "resultKey": "roleAssignments"
+    },
+    {
+      "id": "mam.iosPolicies",
+      "category": "mamAppProtection",
+      "apiVersion": "v1.0",
+      "path": "/deviceAppManagement/iosManagedAppProtections",
+      "permissions": [
+        "DeviceManagementApps.Read.All"
+      ],
+      "required": false,
+      "resultKey": "iosPolicies"
+    },
+    {
+      "id": "mam.androidPolicies",
+      "category": "mamAppProtection",
+      "apiVersion": "v1.0",
+      "path": "/deviceAppManagement/androidManagedAppProtections",
+      "permissions": [
+        "DeviceManagementApps.Read.All"
+      ],
+      "required": false,
+      "resultKey": "androidPolicies"
+    },
+    {
+      "id": "mam.targetedConfigurations",
+      "category": "mamAppProtection",
+      "apiVersion": "v1.0",
+      "path": "/deviceAppManagement/targetedManagedAppConfigurations",
+      "permissions": [
+        "DeviceManagementApps.Read.All"
+      ],
+      "required": false,
+      "resultKey": "targetedConfigurations"
+    },
+    {
+      "id": "mam.iosAssignments",
+      "category": "mamAppProtection",
+      "apiVersion": "v1.0",
+      "pathTemplate": "/deviceAppManagement/iosManagedAppProtections/{id}/assignments",
+      "forEachResultKey": "iosPolicies",
+      "parentIdField": "id",
+      "permissions": [
+        "DeviceManagementApps.Read.All"
+      ],
+      "required": false,
+      "resultKey": "iosAssignments"
+    },
+    {
+      "id": "mam.androidAssignments",
+      "category": "mamAppProtection",
+      "apiVersion": "v1.0",
+      "pathTemplate": "/deviceAppManagement/androidManagedAppProtections/{id}/assignments",
+      "forEachResultKey": "androidPolicies",
+      "parentIdField": "id",
+      "permissions": [
+        "DeviceManagementApps.Read.All"
+      ],
+      "required": false,
+      "resultKey": "androidAssignments"
+    },
+    {
+      "id": "mam.configurationAssignments",
+      "category": "mamAppProtection",
+      "apiVersion": "v1.0",
+      "pathTemplate": "/deviceAppManagement/targetedManagedAppConfigurations/{id}/assignments",
+      "forEachResultKey": "targetedConfigurations",
+      "parentIdField": "id",
+      "permissions": [
+        "DeviceManagementApps.Read.All"
+      ],
+      "required": false,
+      "resultKey": "targetedConfigurationAssignments"
+    }
+  ]
+}
