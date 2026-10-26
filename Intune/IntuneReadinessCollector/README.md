@@ -10,6 +10,8 @@ This tool lives at `Intune/IntuneReadinessCollector/` in [NexlinksRepo/Microsoft
 
 Read [HOW-IT-WORKS.md](HOW-IT-WORKS.md) for a code walkthrough, evidence limits, privacy details, and the validation scope.
 
+See [release history and validation scope](RELEASES.md) and the [Intune project directory](../README.md) for version and repository navigation.
+
 ## Quick start: Contoso
 
 Open PowerShell in this folder and run:
