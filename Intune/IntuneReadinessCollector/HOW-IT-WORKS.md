@@ -73,6 +73,6 @@ The repository ignores JSON except the two required source JSON files, and ignor
 
 ## Validation for this preparation
 
-The original package's ten Pester checks and both standalone offline suites passed locally on PowerShell 7.6.5 and Windows PowerShell 5.1.26100.9711 with Pester 3.4.0. These are offline checks; no tenant sign-in or live collection was performed for this GitHub preparation. The supplied README's older live-validation counts are not included as current or universal results.
+The original package's ten Pester checks and both standalone offline suites passed locally on PowerShell 7.6.5 and Windows PowerShell 5.1.26100.9711 with Pester 4.10.1. These are offline checks; no tenant sign-in or live collection was performed for this GitHub preparation. The supplied README's older live-validation counts are not included as current or universal results.
 
 Microsoft documents the [configuration policy device report action](https://learn.microsoft.com/en-us/powershell/module/microsoft.graph.beta.reports/get-mgbetadevicemanagementreportconfigurationpolicydevicereport?view=graph-powershell-beta) and the [Autopilot inventory endpoint](https://learn.microsoft.com/en-us/graph/api/intune-enrollment-windowsautopilotdeviceidentity-list?view=graph-rest-1.0). Documentation confirms the interfaces; offline tests do not prove current tenant access or live response behavior.

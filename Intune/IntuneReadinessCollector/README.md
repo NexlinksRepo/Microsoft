@@ -264,7 +264,7 @@ The probe requires Microsoft.Graph.Authentication to be installed; it does not i
 
 ## Offline verification
 
-    Import-Module Pester -RequiredVersion 3.4.0
+    Import-Module Pester -RequiredVersion 4.10.1
     $result = Invoke-Pester -Script .\tests\Collector.Tests.ps1 -PassThru
     if ($result.FailedCount -gt 0) { throw 'Collector checks failed.' }
     .\tests\Report.Offline.Tests.ps1
@@ -272,9 +272,9 @@ The probe requires Microsoft.Graph.Authentication to be installed; it does not i
 
 Checks cover package invariants and syntax, report request construction, paging, column mapping, privacy, empty/malformed responses, and diagnostic extraction.
 
-The existing Pester suite uses Pester 3 syntax. It was run with Pester 3.4.0 during preparation; install that version separately if needed. Both standalone suites run without Pester or Microsoft Graph.
+The existing Pester suite uses legacy assertion syntax supported by Pester 4.10.1. It was run with Pester 4.10.1 during preparation; install that version separately if needed. Both standalone suites run without Pester or Microsoft Graph.
 
-On October 25, 2026, all ten Pester checks and both standalone offline suites passed locally on PowerShell 7.6.5 and Windows PowerShell 5.1.26100.9711. The prepared GitHub workflow runs these checks on PowerShell 7 and Windows PowerShell 5.1. Hosted workflow execution remains unverified until the files are uploaded and Actions runs. Offline checks do not establish live API availability, permissions, or complete tenant coverage.
+On October 25, 2026, all ten Pester checks and both standalone offline suites passed locally on PowerShell 7.6.5 and Windows PowerShell 5.1.26100.9711. The prepared GitHub workflow runs these checks on PowerShell 7 and Windows PowerShell 5.1. See the repository Actions tab for hosted workflow results. Offline checks do not establish live API availability, permissions, or complete tenant coverage.
 
 ## Repository license
 
