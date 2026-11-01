@@ -1,8 +1,14 @@
-# M365 Sign-in Audit Report — beta v0.0.1
+# M365 Sign-in Report — beta v0.0.1
 
 A daily Microsoft Entra / Microsoft 365 sign-in collector and analyst report written in PowerShell. It collects interactive-user sign-ins, preserves the raw Graph responses, and produces a self-contained HTML review. Non-interactive users, managed identities, and service principals are excluded from collection and analysis.
 
 The HTML report embeds the Nexlinks website logo from `assets/nexlinks-logo.png` and links to [nexlinks.net](https://www.nexlinks.net/) in the header and footer. The report header also displays the Microsoft 365 tenant name and tenant ID.
+
+## Sample report
+
+![M365 Sign-in Security Daily sample report](docs/sample-report.png)
+
+This preview was generated from the synthetic data in `samples/sample-signins.json`. It contains no tenant data.
 
 ## At a glance
 
@@ -213,6 +219,7 @@ It is safe to use in tests and demonstrations.
 
 ```text
 .
+├── .github/workflows/smoke-test.yml
 ├── assets/nexlinks-logo.png
 ├── samples/sample-signins.json
 ├── src/M365SignInReport.psd1
@@ -251,3 +258,4 @@ It is compatible with Windows PowerShell 5.1 and PowerShell 7. GitHub Actions ru
 - IP reputation, ASN ownership, TOR lists, and threat-intelligence enrichment are deliberately not queried in v0.0.1; no sign-in data is sent to third-party services.
 - A very large tenant should stream Entra logs to Log Analytics, Event Hub, Storage, or a SIEM instead of using a workstation collector as its primary archive.
 - Raw sign-in logs contain personal and security-sensitive data. Protect the output directory with appropriate ACLs and retention controls.
+
