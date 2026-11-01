@@ -1,0 +1,37 @@
+{
+  "TenantName": "",
+  "Branding": {
+    "Name": "Nexlinks",
+    "Url": "https://www.nexlinks.net/"
+  },
+  "DisplayTimeZone": "Local",
+  "OutputDirectory": ".\\output",
+  "Authentication": {
+    "Mode": "Delegated",
+    "TenantId": "",
+    "ClientId": "",
+    "CertificateThumbprint": "",
+    "UseDeviceCode": false
+  },
+  "Collection": {
+    "GraphApiVersion": "beta",
+    "EventTypes": [
+      "interactiveUser"
+    ],
+    "ReportHours": 48,
+    "BaselineDays": 14,
+    "PageSize": 1000
+  },
+  "Analysis": {
+    "MinimumUserBaselineEvents": 3,
+    "PasswordSprayDistinctUsers": 5,
+    "FailureBurstThreshold": 10,
+    "ImpossibleTravelSpeedKph": 900,
+    "ImpossibleTravelMinimumKm": 500,
+    "KnownCountries": []
+  },
+  "Report": {
+    "MaximumDetailRows": 500,
+    "OpenAfterGeneration": true
+  }
+}
