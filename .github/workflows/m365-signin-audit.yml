@@ -17,10 +17,17 @@ permissions:
 jobs:
   smoke-test:
     runs-on: windows-latest
+    timeout-minutes: 10
+    strategy:
+      matrix:
+        shell: [pwsh, powershell]
+    defaults:
+      run:
+        shell: ${{ matrix.shell }}
+        working-directory: Microsoft365/M365SignInAuditReport
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Run M365 audit report smoke tests
-        shell: pwsh
-        run: ./Microsoft365/M365SignInAuditReport/tests/SmokeTest.ps1
+        run: ./tests/SmokeTest.ps1
