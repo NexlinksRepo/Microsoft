@@ -1,0 +1,26 @@
+name: M365 Sign-in Audit Report
+
+on:
+  push:
+    paths:
+      - "Microsoft365/M365SignInAuditReport/**"
+      - ".github/workflows/m365-signin-audit.yml"
+  pull_request:
+    paths:
+      - "Microsoft365/M365SignInAuditReport/**"
+      - ".github/workflows/m365-signin-audit.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke-test:
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Run M365 audit report smoke tests
+        shell: pwsh
+        run: ./Microsoft365/M365SignInAuditReport/tests/SmokeTest.ps1

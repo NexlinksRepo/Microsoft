@@ -1,10 +1,17 @@
-# Collector output can contain tenant, device, user, policy, and app information.
+# Generated evidence can contain tenant, device, user, policy, app, IP and location information.
 **/runs/
+**/output/
+**/_state/
+**/*.jsonl
 **/*.json
 !Intune/IntuneReadinessCollector/query-manifest.json
 !Intune/IntuneReadinessCollector/intune-readiness.schema.json
+!Microsoft365/M365SignInAuditReport/config.example.json
+!Microsoft365/M365SignInAuditReport/samples/sample-signins.json
 
-# Local credentials, logs, and generated review artifacts.
+# Tenant-specific configuration, credentials and generated review artifacts.
+**/config.json
+*.local.json
 .env
 .env.*
 *.pfx
@@ -14,8 +21,13 @@
 *.log
 *.clixml
 *.zip
+*.tmp
+*.bak
 TestResults*.xml
+TestResults/
+.coverage/
 .vscode/
 .idea/
 Thumbs.db
+Desktop.ini
 .DS_Store
