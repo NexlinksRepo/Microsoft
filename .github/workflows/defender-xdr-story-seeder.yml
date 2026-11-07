@@ -1,0 +1,33 @@
+name: Defender XDR Story Seeder
+
+on:
+  push:
+    paths:
+      - "Microsoft365/DefenderXdrStorySeeder/**"
+      - ".github/workflows/defender-xdr-story-seeder.yml"
+  pull_request:
+    paths:
+      - "Microsoft365/DefenderXdrStorySeeder/**"
+      - ".github/workflows/defender-xdr-story-seeder.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  offline-validation:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: Microsoft365/DefenderXdrStorySeeder
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Run offline validation
+        run: ./tests/Offline.Tests.ps1
+
+      - name: Build versioned release archive
+        run: ./Build-Release.ps1

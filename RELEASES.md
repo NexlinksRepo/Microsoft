@@ -4,6 +4,14 @@
 | --- | --- | --- | --- | --- |
 | Intune | Intune Endpoint Readiness Collector | 1.0.5 | [Project folder](Intune/IntuneReadinessCollector/) | [Collector releases](Intune/IntuneReadinessCollector/RELEASES.md) |
 | Microsoft 365 | M365 Sign-in Audit Report | 0.0.1-beta | [Project folder](Microsoft365/M365SignInAuditReport/) | [Audit report changelog](Microsoft365/M365SignInAuditReport/CHANGELOG.md) |
+| Microsoft 365 | Defender XDR Story Seeder | 0.1.0-beta | [Project folder](Microsoft365/DefenderXdrStorySeeder/) | [Seeder changelog](Microsoft365/DefenderXdrStorySeeder/CHANGELOG.md) |
+
+## Defender XDR Story Seeder 0.1.0-beta — November 6, 2026
+
+- Added a documented 50-incident, 549-alert Defender XDR demonstration dataset.
+- Added tenant identity discovery, fictional endpoint and mailbox evidence, and six workload-story contexts.
+- Added safe selective cleanup, incremental manifests, offline validation, and reproducible release packaging.
+- Added a project-specific CI workflow and security guidance.
 
 ## Repository update — November 1, 2026
 

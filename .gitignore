@@ -2,12 +2,17 @@
 **/runs/
 **/output/
 **/_state/
+**/artifacts/
+**/dist/
 **/*.jsonl
 **/*.json
 !Intune/IntuneReadinessCollector/query-manifest.json
 !Intune/IntuneReadinessCollector/intune-readiness.schema.json
 !Microsoft365/M365SignInAuditReport/config.example.json
 !Microsoft365/M365SignInAuditReport/samples/sample-signins.json
+!Microsoft365/DefenderXdrStorySeeder/catalog/attack-catalog.json
+!Microsoft365/DefenderXdrStorySeeder/catalog/endpoint-roster.json
+!Microsoft365/DefenderXdrStorySeeder/catalog/mailbox-roster.json
 
 # Tenant-specific configuration, credentials and generated review artifacts.
 **/config.json
