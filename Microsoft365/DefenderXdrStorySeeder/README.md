@@ -12,6 +12,22 @@ local run manifest.
 > authorized to create hundreds of Defender alerts and incidents. A default run creates 50
 > incidents and 549 alerts.
 
+## Sample output
+
+### Seeded incident queue
+
+The full run produces varied incident names, severities, impacted identities, fictional endpoints,
+and 10–12 active alerts per incident in the Microsoft Defender portal.
+
+![Seeded Defender XDR incidents showing varied attack stories, severities, impacted assets, and alert counts](docs/defender-xdr-seeded-incidents.png)
+
+### Incident attack story
+
+Opening a seeded incident shows its linked alert sequence and the relationships among the impacted
+identity, fictional endpoint, IP addresses, URLs, and files.
+
+![Defender XDR attack story showing twelve linked alerts and the incident asset graph](docs/defender-xdr-attack-story.png)
+
 ## What the tool creates
 
 | Item | Default | Details |
