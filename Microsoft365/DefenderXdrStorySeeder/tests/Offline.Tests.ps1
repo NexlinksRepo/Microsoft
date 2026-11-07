@@ -40,6 +40,8 @@ $requiredFiles = @(
     'docs\ARCHITECTURE.md'
     'docs\CATALOG.md'
     'docs\TROUBLESHOOTING.md'
+    'docs\defender-xdr-seeded-incidents.png'
+    'docs\defender-xdr-attack-story.png'
 )
 foreach ($relativePath in $requiredFiles) {
     Assert-Condition -Condition (Test-Path -LiteralPath (Join-Path $projectRoot $relativePath) -PathType Leaf) -Message "Required file exists: $relativePath"
