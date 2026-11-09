@@ -9,6 +9,8 @@
 | `DefenderXdrStorySeeder.Agent365.ps1` | Dormant blueprint, principal, child identity, and registry-card creation. |
 | `Start-DefenderAgentRegistrationRetry.ps1` | UPN-first launcher for retrying only missing registry cards from a manifest. |
 | `Invoke-DefenderAgentRegistrationRetry.ps1` | Scope validation, registration-only recovery, detailed error capture, and incremental manifest updates. |
+| `Start-DefenderAgentCleanup.ps1` | UPN-first launcher for deleting only recorded demo agents. |
+| `Invoke-DefenderAgentCleanup.ps1` | Recursive manifest discovery, ID deduplication, specialized agent-object deletion, and cleanup manifests. |
 | `Start-DefenderBulkCleanup.ps1` | Minimal executing cleanup launcher. |
 | `Invoke-DefenderBulkCleanup.ps1` | Active-alert discovery, safe selection, resolution, incident protection, and cleanup manifests. |
 | `catalog/attack-catalog.json` | Fifty primary incident stories and their first alert. |
@@ -135,6 +137,13 @@ Persist artifacts/cleanup-run-*.json after every operation
 The cleanup manifest supports repeatable recovery: a subsequent run selects only alerts still
 active. Failures do not cause already completed updates to be reversed.
 
+Agent-only cleanup is a separate path. It reads `bulk-seed-run-*.json` files and supplements them
+with a blueprint list filtered client-side to names beginning exactly with `[DXR Demo]`. It calls
+only the specialized registration, blueprint, child-identity, and blueprint-principal delete
+endpoints and does not read or update Defender alerts or incidents. Blueprint cascade cleanup can
+make later child-object deletes return 404; that result is recorded as `alreadyAbsent` and is
+considered successful.
+
 ## Trust boundaries
 
 - Microsoft Graph and the Defender backend are authoritative for alert and incident state.
@@ -142,3 +151,4 @@ active. Failures do not cause already completed updates to be reversed.
   manifests; they are not executed.
 - Catalog JSON is local code-adjacent configuration. Review changes through source control.
 - Generated manifests are sensitive tenant data and must stay outside the repository.
+

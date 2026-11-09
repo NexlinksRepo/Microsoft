@@ -96,6 +96,13 @@ Agent object deletion is recoverable for the Microsoft retention period because 
 is a soft delete. Defender alert and incident cleanup is different: those records are resolved and
 classified, not erased.
 
+Version 0.2.2 also provides `Start-DefenderAgentCleanup.ps1` for agent-only removal. Point its
+second argument at a parent folder such as Downloads and it recursively reads every
+`bulk-seed-run-*.json`, deduplicates copied manifests, and deletes the recorded agent objects. The
+launcher also lists blueprints and includes only names beginning exactly with `[DXR Demo]`, which
+catches a missing manifest. It never calls Defender alert or incident endpoints. The underlying
+script can be run without `-Execute` to preview one or more manifests before deletion.
+
 ## Registration-only recovery
 
 Version 0.2.1 includes `Start-DefenderAgentRegistrationRetry.ps1` for manifests where Entra objects
@@ -115,3 +122,4 @@ service-rollout gate rather than a need to recreate the agent identities.
 - [Agent Registration API overview](https://learn.microsoft.com/microsoft-365/copilot/extensibility/api/admin-settings/agent-registration/overview)
 - [Delete an agent identity blueprint](https://learn.microsoft.com/graph/api/agentidentityblueprint-delete?view=graph-rest-1.0)
 - [Authorization in Microsoft Entra Agent ID](https://learn.microsoft.com/entra/agent-id/authorization-agent-id)
+

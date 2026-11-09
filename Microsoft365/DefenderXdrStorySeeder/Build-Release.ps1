@@ -27,6 +27,8 @@ $runtimeFiles = @(
     'DefenderXdrStorySeeder.Agent365.ps1'
     'Start-DefenderAgentRegistrationRetry.ps1'
     'Invoke-DefenderAgentRegistrationRetry.ps1'
+    'Start-DefenderAgentCleanup.ps1'
+    'Invoke-DefenderAgentCleanup.ps1'
     'Start-DefenderBulkCleanup.ps1'
     'Invoke-DefenderBulkCleanup.ps1'
     'README.md'
@@ -102,3 +104,4 @@ Write-Host "Checksums: $checksumPath"
     Sha256       = $checksum
     ChecksumPath = $checksumPath
 }
+
