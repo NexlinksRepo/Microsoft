@@ -30,6 +30,8 @@ $requiredFiles = @(
     'DefenderXdrStorySeeder.Agent365.ps1'
     'Start-DefenderAgentRegistrationRetry.ps1'
     'Invoke-DefenderAgentRegistrationRetry.ps1'
+    'Start-DefenderAgentCleanup.ps1'
+    'Invoke-DefenderAgentCleanup.ps1'
     'Start-DefenderBulkCleanup.ps1'
     'Invoke-DefenderBulkCleanup.ps1'
     'Build-Release.ps1'
@@ -58,6 +60,8 @@ $scriptFiles = @(
     'DefenderXdrStorySeeder.Agent365.ps1'
     'Start-DefenderAgentRegistrationRetry.ps1'
     'Invoke-DefenderAgentRegistrationRetry.ps1'
+    'Start-DefenderAgentCleanup.ps1'
+    'Invoke-DefenderAgentCleanup.ps1'
     'Start-DefenderBulkCleanup.ps1'
     'Invoke-DefenderBulkCleanup.ps1'
     'Build-Release.ps1'
@@ -81,11 +85,13 @@ $cleanupText = Get-Content -LiteralPath (Join-Path $projectRoot 'Invoke-Defender
 $launcherText = Get-Content -LiteralPath (Join-Path $projectRoot 'Start-DefenderBulkSeed.ps1') -Raw
 $agentHelperText = Get-Content -LiteralPath (Join-Path $projectRoot 'DefenderXdrStorySeeder.Agent365.ps1') -Raw
 $registrationRetryText = Get-Content -LiteralPath (Join-Path $projectRoot 'Invoke-DefenderAgentRegistrationRetry.ps1') -Raw
+$agentCleanupText = Get-Content -LiteralPath (Join-Path $projectRoot 'Invoke-DefenderAgentCleanup.ps1') -Raw
 $readmeText = Get-Content -LiteralPath (Join-Path $projectRoot 'README.md') -Raw
 $changelogText = Get-Content -LiteralPath (Join-Path $projectRoot 'CHANGELOG.md') -Raw
 Assert-Condition -Condition ($seederText.Contains("`$ProjectVersion = '$version'")) -Message 'Seeder version matches VERSION'
 Assert-Condition -Condition ($cleanupText.Contains("`$ProjectVersion = '$version'")) -Message 'Cleanup version matches VERSION'
 Assert-Condition -Condition ($registrationRetryText.Contains("`$ProjectVersion = '$version'")) -Message 'Registration retry version matches VERSION'
+Assert-Condition -Condition ($agentCleanupText.Contains("`$ProjectVersion = '$version'")) -Message 'Agent-only cleanup version matches VERSION'
 Assert-Condition -Condition ($agentHelperText.Contains("`$script:AgentSeederVersion = '$version'")) -Message 'Agent helper version matches VERSION'
 Assert-Condition -Condition ($readmeText.Contains("Current version: **$version**")) -Message 'README version matches VERSION'
 Assert-Condition -Condition ($changelogText.Contains("## $version")) -Message 'Changelog contains the current version'
@@ -160,6 +166,21 @@ Assert-Condition -Condition (-not $registrationRetryText.Contains('New-DemoAiAge
 Assert-Condition -Condition ($registrationRetryText.Contains("'AgentRegistration.ReadWrite.All' -notin")) -Message 'Registration retry verifies the delegated scope is present'
 Assert-Condition -Condition ($cleanupText.Contains('agentRegistrations/$registrationId')) -Message 'Cleanup removes only recorded registry IDs'
 Assert-Condition -Condition ($cleanupText.Contains('microsoft.graph.agentIdentityBlueprint')) -Message 'Cleanup uses blueprint cascade deletion'
+foreach ($fragment in @(
+    'copilot/agentRegistrations/'
+    'microsoft.graph.agentIdentityBlueprint"'
+    'microsoft.graph.agentIdentity"'
+    'microsoft.graph.agentIdentityBlueprintPrincipal"'
+)) {
+    Assert-Condition -Condition ($agentCleanupText.Contains($fragment)) -Message "Agent-only cleanup contains specialized endpoint: $fragment"
+}
+Assert-Condition -Condition ($agentCleanupText.Contains("-Filter 'bulk-seed-run-*.json'")) -Message 'Agent-only cleanup discovers seed manifests'
+Assert-Condition -Condition ($agentCleanupText.Contains("[string]`$NamePrefix = '[DXR Demo]'")) -Message 'Agent-only cleanup defaults to the exact DXR Demo prefix'
+Assert-Condition -Condition ($agentCleanupText.Contains('microsoft.graph.agentIdentityBlueprint?$select=id,appId,displayName')) -Message 'Agent-only cleanup lists only Agent ID blueprints for prefix discovery'
+Assert-Condition -Condition ($agentCleanupText.Contains('StartsWith($Prefix, [System.StringComparison]::OrdinalIgnoreCase)')) -Message 'Agent-only cleanup applies a strict starts-with prefix filter'
+Assert-Condition -Condition ($agentCleanupText.Contains("result = 'alreadyAbsent'")) -Message 'Agent-only cleanup is repeat-safe for absent objects'
+Assert-Condition -Condition (-not $agentCleanupText.Contains('/security/alerts')) -Message 'Agent-only cleanup does not access Defender alerts'
+Assert-Condition -Condition (-not $agentCleanupText.Contains('/security/incidents')) -Message 'Agent-only cleanup does not access Defender incidents'
 
 $dryRun = & (Join-Path $projectRoot 'Invoke-DefenderBulkSeeder.ps1') `
     -GlobalAdminUpn 'offline.test@contoso.example' `
@@ -180,3 +201,4 @@ if ($failures.Count -gt 0) {
 }
 
 Write-Host "All offline checks passed for Defender XDR Story Seeder $version." -ForegroundColor Green
+

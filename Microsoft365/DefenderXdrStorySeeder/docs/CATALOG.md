@@ -3,7 +3,7 @@
 ## Attack catalog
 
 `catalog/attack-catalog.json` contains an `attacks` array with exactly 50 objects for version
-`0.2.1-beta`.
+`0.2.2-beta`.
 
 Each attack defines:
 
@@ -95,3 +95,4 @@ These addresses are not provisioned. Avoid aliases that identify real people.
 6. Update cleanup title matching if shared stage titles change.
 7. Update the documented totals and changelog if the catalog length or alert formula changes.
 8. Run `pwsh -File .\tests\Offline.Tests.ps1` and `pwsh -File .\Build-Release.ps1`.
+

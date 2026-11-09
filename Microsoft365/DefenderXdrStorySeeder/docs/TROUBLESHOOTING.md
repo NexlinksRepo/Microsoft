@@ -41,7 +41,7 @@ for the write APIs. A role activation delay can require a new sign-in.
 ## `400 Bad Request` while updating an incident
 
 Use the current version. Earlier packages could serialize a one-item `customTags` collection as a
-scalar. Version `0.2.1-beta` does not depend on a synthetic custom tag and sends only supported
+scalar. Version `0.2.2-beta` does not depend on a synthetic custom tag and sends only supported
 incident fields.
 
 ## `404 Not Found` after creating the first alert
@@ -85,6 +85,21 @@ telemetry. Agent 365 and Defender determine posture and risk from supported tena
 the declared authority profile and the IDs in the manifest rather than treating the profile label as
 a Microsoft-calculated risk.
 
+## I need to remove only the demo agents
+
+Do not use the bulk cleanup if the alerts and incidents should remain. Run the dedicated launcher
+and point it at the parent folder that contains the downloaded seeder packages:
+
+```powershell
+pwsh -File .\Start-DefenderAgentCleanup.ps1 `
+  'global.admin@contoso.com' `
+  "$env:USERPROFILE\Downloads"
+```
+
+It recursively finds seed manifests, deduplicates their recorded object IDs, and includes only
+additional blueprint names beginning with `[DXR Demo]`. A 404 means cascade cleanup or an earlier
+run already removed that object and is safe to ignore.
+
 ## Cleanup found zero alerts
 
 Possible explanations:
@@ -126,3 +141,4 @@ throttled during a large cleanup.
 Share the project version, PowerShell version, operation, HTTP status, and redacted error text. Do
 not publish manifests, tenant IDs, UPNs, alert IDs, incident IDs, portal URLs, access tokens, or Graph
 response bodies containing tenant evidence.
+

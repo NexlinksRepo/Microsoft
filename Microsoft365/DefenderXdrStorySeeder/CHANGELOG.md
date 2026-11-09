@@ -3,6 +3,19 @@
 All notable changes to Defender XDR Story Seeder are documented here. Versions follow Semantic
 Versioning. Tags use the repository convention `defender-xdr-story-seeder/v<version>`.
 
+## 0.2.2-beta — 2026-11-09
+
+- Add a dedicated agent-only cleanup launcher that leaves Defender alerts and incidents untouched.
+- Recursively discover `bulk-seed-run-*.json` manifests beneath a selected folder, deduplicate
+  copied manifests by recorded agent object ID, and add blueprint discovery restricted to names
+  beginning exactly with `[DXR Demo]`.
+- Delete only recorded Agent 365 registrations, blueprints, child identities, and blueprint
+  principals through their specialized Microsoft Graph endpoints.
+- Treat already-absent objects as successful repeat cleanup and write an incremental
+  `agent-cleanup-run-*.json` audit manifest.
+- Add release packaging, offline validation, usage, permission, recovery, and troubleshooting
+  documentation for agent-only cleanup.
+
 ## 0.2.1-beta — 2026-11-09
 
 - Remove `managedByAppId` from Agent Registry creation requests when `ownerIds` already satisfies
@@ -71,3 +84,4 @@ Versioning. Tags use the repository convention `defender-xdr-story-seeder/v<vers
 - Cleanup resolves records but cannot delete them from Defender history.
 - Fictional device evidence does not populate the global Defender device inventory.
 - Microsoft-controlled service and detection source fields cannot be overridden.
+

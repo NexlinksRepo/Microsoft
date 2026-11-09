@@ -1,7 +1,7 @@
 #requires -Version 7.2
 
 Set-StrictMode -Version Latest
-$script:AgentSeederVersion = '0.2.1-beta'
+$script:AgentSeederVersion = '0.2.2-beta'
 
 function Get-AgentGraphErrorInfo {
     param([Parameter(Mandatory)]$ErrorRecord)
@@ -260,3 +260,4 @@ function New-DemoAiAgent {
     $record.creationStatus = if ($createdComponentCount -eq 4) { 'created' } elseif ($createdComponentCount -gt 0) { 'partial' } else { 'proxyOnly' }
     return $record
 }
+

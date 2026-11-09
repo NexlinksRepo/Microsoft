@@ -44,7 +44,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-$ProjectVersion = '0.2.1-beta'
+$ProjectVersion = '0.2.2-beta'
 
 . (Join-Path $PSScriptRoot 'DefenderXdrStorySeeder.Agent365.ps1')
 
@@ -957,3 +957,4 @@ Write-Host "Run manifest: $manifestPath"
     FirstIncident  = if ($manifest.completedCount) { $manifest.incidents[0].incidentWebUrl } else { $null }
     ManifestPath   = $manifestPath
 }
+

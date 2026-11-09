@@ -1,6 +1,6 @@
 # Defender XDR Story Seeder
 
-Current version: **0.2.1-beta**
+Current version: **0.2.2-beta**
 
 Defender XDR Story Seeder creates a disposable, presentation-friendly incident dataset in the
 Microsoft Defender portal without Microsoft Sentinel or a fleet of physical or virtual endpoints.
@@ -16,6 +16,11 @@ Defender XDR proxy stories that carry those object identifiers in their narrativ
 Version 0.2.1 corrects Agent Registry ownership payloads, captures complete Graph error details,
 stops repeating a tenant-wide 401/403 registration failure, and adds a registration-only retry that
 reuses existing identities and incidents.
+
+Version 0.2.2 adds a dedicated agent-only cleanup launcher. It recursively discovers seeder
+manifests, deduplicates their recorded object IDs, and also finds blueprint names beginning exactly
+with `[DXR Demo]`. It removes only those registrations, blueprints, child identities, and blueprint
+principals without reading or changing Defender alerts or incidents.
 
 > This is a security-testing and demonstration utility. Run it only in a tenant where you are
 > authorized to create hundreds of Defender alerts and incidents. A default run creates 50
@@ -99,7 +104,10 @@ available. It does not install the full Microsoft Graph PowerShell SDK.
 | `AgentIdentityBlueprintPrincipal.Create` | Optional | No | Create its blueprint principal. |
 | `AgentIdentity.Create.All` | Optional | No | Create a child agent identity where supported. |
 | `AgentRegistration.ReadWrite.All` | Optional | Yes | Create/delete the recorded Agent 365 registry card. |
+| `AgentIdentityBlueprint.Read.All` | No | Agent-only | Discover blueprints whose name begins with the exact cleanup prefix. |
 | `AgentIdentityBlueprint.DeleteRestore.All` | No | Yes | Soft-delete only recorded generated blueprints; child identities are cascade-cleaned. |
+| `AgentIdentity.DeleteRestore.All` | No | Agent-only | Remove a recorded child identity if cascade cleanup has not already removed it. |
+| `AgentIdentityBlueprintPrincipal.DeleteRestore.All` | No | Agent-only | Remove a recorded blueprint principal if cascade cleanup has not already removed it. |
 
 The scripts use delegated browser sign-in. They do not accept or store client secrets, certificates,
 tokens, or passwords. Microsoft Graph documentation:
@@ -225,6 +233,36 @@ and records the full HTTP status and Graph response for any remaining failure. I
 blueprints, principals, identities, incidents, or alerts. If the manifest already lives under this
 package's `artifacts` directory, omit the second argument to use the newest seed manifest.
 
+## Delete only the demo agents
+
+To remove every agent object recorded by seeder manifests anywhere under Downloads, while leaving
+all Defender alerts and incidents alone, run:
+
+```powershell
+pwsh -File .\Start-DefenderAgentCleanup.ps1 `
+  'global.admin@contoso.com' `
+  "$env:USERPROFILE\Downloads"
+```
+
+The second argument is searched recursively for `bulk-seed-run-*.json`. The cleanup deduplicates
+copied manifests and targets recorded Agent 365 registration, blueprint, child-identity, and
+blueprint-principal IDs. It also lists Agent ID blueprints and adds only those whose display name
+starts with the exact `[DXR Demo]` prefix, catching a run whose manifest was misplaced. A
+confirmation displays the selected agent sets and object IDs before deletion.
+
+To preview one manifest without signing in or changing the tenant:
+
+```powershell
+pwsh -File .\Invoke-DefenderAgentCleanup.ps1 `
+  -GlobalAdminUpn 'global.admin@contoso.com' `
+  -ManifestPath 'C:\path\to\bulk-seed-run-20261109-170925.json'
+```
+
+Blueprint deletion is a Microsoft Graph soft delete and triggers Microsoft's cascade cleanup of
+child objects. The script also attempts each recorded child identity and principal directly; a
+`404 Not Found` is treated as an already-completed deletion, so rerunning is safe. Results are saved
+to `artifacts\agent-cleanup-run-*.json`.
+
 ## Clean up before another run
 
 Resolve only the active alerts that match this package's catalog and close the safe incidents:
@@ -318,6 +356,16 @@ avoided.
 | `ManifestPath` | Newest local seed manifest | Existing 0.2 manifest containing agent IDs. |
 | `UseDeviceCode` | Off | Use device-code authentication. |
 
+### `Start-DefenderAgentCleanup.ps1`
+
+| Parameter | Default | Description |
+| --- | --- | --- |
+| `GlobalAdminUpn` | Required | Login hint used for delegated sign-in. |
+| `SearchRoot` | Local `artifacts` folder | Folder recursively searched for seed manifests, or one manifest file. |
+| `ManifestPath` | Empty | Additional explicit seed manifest paths. |
+| `NamePrefix` | `[DXR Demo]` | Exact beginning of blueprint names additionally selected by the launcher. |
+| `UseDeviceCode` | Off | Use device-code authentication. |
+
 ## Run manifests and privacy
 
 Manifests can contain tenant IDs, administrator UPNs, discovered user UPNs, mailbox addresses,
@@ -376,5 +424,6 @@ The version comes from `VERSION`; the committed scripts and changelog must use t
 This project is licensed under the repository's GNU General Public License, version 3. Microsoft
 product names identify the services used and do not imply Microsoft affiliation or endorsement.
 
-Version `0.2.1-beta` is suitable for authorized demonstrations and lab tenants. It is not a
+Version `0.2.2-beta` is suitable for authorized demonstrations and lab tenants. It is not a
 production telemetry simulator or a substitute for real Defender workload onboarding.
+
