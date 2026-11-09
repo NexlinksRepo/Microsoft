@@ -26,9 +26,10 @@ Version 0.2.3 fixes single-page Agent ID blueprint discovery when Microsoft Grap
 the optional `@odata.nextLink` property.
 
 Version 0.2.4 names new demo agents with the exact `[MXDR Demo]` prefix, securely reuses the
-administrator's Microsoft Graph sign-in across seeding and cleanup processes, and keeps AI stories
-aligned when more AI incidents than demo agents are requested. Earlier packages retain their
-historical naming only inside their archived ZIPs and changelog entries.
+administrator's Microsoft Graph sign-in across seeding and cleanup processes, keeps AI stories
+aligned when more AI incidents than demo agents are requested, and safely reconciles ambiguous
+alert POST timeouts before continuing. Earlier packages retain their historical naming only inside
+their archived ZIPs and changelog entries.
 
 > This is a security-testing and demonstration utility. Run it only in a tenant where you are
 > authorized to create hundreds of Defender alerts and incidents. A default run creates 50
@@ -215,9 +216,9 @@ count.
 
 ## Resume a partial run
 
-The seeder writes the manifest after each object and alert. If a run stops, inspect the latest
-`artifacts\bulk-seed-run-*.json` file. Resume with the same counts and that manifest path. Completed
-incidents and recorded agent objects are reused; an incomplete incident must still be inspected.
+The seeder writes a schema-3 manifest before and after each alert POST. If a run stops, use the
+latest `artifacts\bulk-seed-run-*.json` file with the same counts. Completed incidents and recorded
+agent objects are reused, while a partial incident resumes at its first unrecorded alert.
 
 ```powershell
 pwsh -File .\Invoke-DefenderBulkSeeder.ps1 `
@@ -228,9 +229,13 @@ pwsh -File .\Invoke-DefenderBulkSeeder.ps1 `
   -Execute
 ```
 
-Always inspect the partial incident in the manifest before resuming. A network failure after a POST
-can create an alert even if the client did not receive the response; POST requests are deliberately
-not retried automatically to avoid duplicates.
+Each alert description contains a deterministic correlation marker. When a POST returns `408`,
+`429`, a server error, or loses its response, the seeder checks the incident and recent alerts for
+that marker for up to one minute. If the alert exists, its response is reconstructed and the run
+continues without another POST. If it does not appear, the POST is retried once. If the process
+stops between submission and manifest update, resuming performs the same reconciliation before
+continuing the existing incident. Partial schema-2 manifests from the earlier 0.2.4 build are
+refused because they do not contain safe correlation markers.
 
 ## Retry Agent 365 registration without creating duplicates
 
@@ -324,7 +329,7 @@ avoided.
 | `SkipDemoAiAgents` | Prompt | Keep the run traditional-only without prompting. |
 | `DemoAgentCount` | `10` | Number of dormant demo identity sets, from 1 through 50. |
 | `AiIncidentCount` | `min(agents, incidents)` | Number of selected incidents using AI proxy scenarios. |
-| `ResumeManifestPath` | Empty | Continue a matching 0.2 manifest. |
+| `ResumeManifestPath` | Empty | Continue a matching schema-3 manifest, including its partial incident. |
 | `UseDeviceCode` | Off | Use device-code authentication instead of interactive browser sign-in. |
 
 ### `Invoke-DefenderBulkSeeder.ps1`
@@ -337,7 +342,7 @@ avoided.
 | `DemoAgentCount` | `10` | Number of demo agents to attempt. |
 | `AiIncidentCount` | `0` | Number of AI manual proxy incidents within the total. |
 | `AiAgentCatalogPath` | `catalog\ai-agent-catalog.json` | Alternate AI profiles and scenarios. |
-| `ResumeManifestPath` | Empty | Resume after completed incidents using the same input counts. |
+| `ResumeManifestPath` | Empty | Resume the same schema-3 plan and partial incident using identical counts. |
 | `StartAt` | `1` | One-based catalog item at which to begin. |
 | `DelayMilliseconds` | `1000` | Delay between write operations; accepted range is 500–30000. |
 | `RandomSeed` | `20261106` | Makes identity, mailbox, and endpoint assignment repeatable. |

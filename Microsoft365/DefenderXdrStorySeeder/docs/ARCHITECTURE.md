@@ -54,9 +54,16 @@ PATCH incident metadata, classification, determination, and status
 Persist artifacts/bulk-seed-run-*.json after every alert
 ```
 
-The initial POST is not retried automatically. A network failure can hide a successful server-side
-creation from the client; retrying an unconfirmed POST would risk a duplicate incident. GET and PATCH
-requests use bounded exponential retries.
+Before each alert POST, schema-3 manifests persist a deterministic marker derived from the run,
+catalog item, and stage. An ambiguous `408`, `429`, transport, or server-error result triggers a
+read-back through the incident-alert relationship and the recent-alert collection. A recovered
+marker is treated as the successful response. Only when no matching alert appears during the
+reconciliation window is the POST retried once. GET and PATCH requests use bounded exponential
+retries.
+
+If the process stops, resume reuses the trailing partial incident record, reconciles any pending
+marker, and starts at the first unrecorded stage. Partial schema-2 manifests are rejected because
+they cannot distinguish an absent alert from a successful POST whose response was lost.
 
 Agent and registry POSTs are also not retried. Their results are persisted after every requested
 agent. Unsupported components fall back independently to a manual proxy record, allowing the

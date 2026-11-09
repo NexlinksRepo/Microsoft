@@ -107,18 +107,158 @@ function Invoke-GraphRequestWithRetry {
     }
 }
 
-function Invoke-CreateManualAlert {
-    param([Parameter(Mandatory)][System.Collections.IDictionary]$Body)
+function Get-GraphStatusCode {
+    param([Parameter(Mandatory)]$ErrorRecord)
 
-    # Manual-alert creation is not idempotent. Do not automatically retry a POST
-    # because a lost response could result in a duplicate incident.
-    Invoke-MgGraphRequest `
-        -Method POST `
-        -Uri 'https://graph.microsoft.com/beta/security/alerts_v2' `
-        -Body ($Body | ConvertTo-Json -Depth 20 -Compress) `
-        -ContentType 'application/json' `
-        -OutputType PSObject `
-        -ErrorAction Stop
+    try {
+        if ($null -ne $ErrorRecord.Exception.Response.StatusCode) {
+            return [int]$ErrorRecord.Exception.Response.StatusCode
+        }
+    }
+    catch {
+        return $null
+    }
+    return $null
+}
+
+function Find-ManualAlertByMarker {
+    param(
+        [Parameter(Mandatory)][string]$Marker,
+        [AllowEmptyString()][string]$IncidentId,
+        [Parameter(Mandatory)][DateTime]$NotBeforeUtc
+    )
+
+    $matches = [System.Collections.Generic.List[object]]::new()
+    if (-not [string]::IsNullOrWhiteSpace($IncidentId)) {
+        try {
+            $escapedIncidentId = [uri]::EscapeDataString($IncidentId)
+            $incident = Invoke-GraphRequestWithRetry `
+                -Method GET `
+                -Uri "https://graph.microsoft.com/v1.0/security/incidents/$escapedIncidentId`?`$expand=alerts" `
+                -Body $null
+            foreach ($alert in @($incident.alerts)) {
+                $description = [string]$alert.description
+                if (-not [string]::IsNullOrWhiteSpace($description) -and $description.IndexOf($Marker, [System.StringComparison]::Ordinal) -ge 0) {
+                    $matches.Add($alert)
+                }
+            }
+        }
+        catch {
+            Write-Verbose "Incident alert expansion was unavailable during POST reconciliation: $($_.Exception.Message)"
+        }
+    }
+
+    if ($matches.Count -eq 0) {
+        $notBefore = $NotBeforeUtc.ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+        $encodedFilter = [uri]::EscapeDataString("createdDateTime ge $notBefore")
+        $uri = "https://graph.microsoft.com/v1.0/security/alerts_v2?`$filter=$encodedFilter&`$top=100"
+        $pageCount = 0
+        while (-not [string]::IsNullOrWhiteSpace($uri) -and $pageCount -lt 5) {
+            $pageCount++
+            $response = Invoke-GraphRequestWithRetry -Method GET -Uri $uri -Body $null
+            foreach ($alert in @($response.value)) {
+                $description = [string]$alert.description
+                if ([string]::IsNullOrWhiteSpace($description) -or $description.IndexOf($Marker, [System.StringComparison]::Ordinal) -lt 0) {
+                    continue
+                }
+                if (-not [string]::IsNullOrWhiteSpace($IncidentId) -and [string]$alert.incidentId -ne $IncidentId) {
+                    continue
+                }
+                $matches.Add($alert)
+            }
+            $nextLinkProperty = $response.PSObject.Properties['@odata.nextLink']
+            $uri = if ($null -eq $nextLinkProperty) { $null } else { [string]$nextLinkProperty.Value }
+        }
+    }
+
+    if ($matches.Count -gt 1) {
+        throw "More than one alert contains correlation marker '$Marker'. Stop and review the incident before continuing."
+    }
+    if ($matches.Count -eq 1) {
+        return $matches[0]
+    }
+    return $null
+}
+
+function Wait-ManualAlertByMarker {
+    param(
+        [Parameter(Mandatory)][string]$Marker,
+        [AllowEmptyString()][string]$IncidentId,
+        [Parameter(Mandatory)][DateTime]$NotBeforeUtc,
+        [ValidateRange(1, 12)][int]$MaximumAttempts = 6,
+        [ValidateRange(0, 30)][int]$DelaySeconds = 5
+    )
+
+    for ($attempt = 1; $attempt -le $MaximumAttempts; $attempt++) {
+        $alert = Find-ManualAlertByMarker -Marker $Marker -IncidentId $IncidentId -NotBeforeUtc $NotBeforeUtc
+        if ($null -ne $alert) {
+            return $alert
+        }
+        if ($attempt -lt $MaximumAttempts -and $DelaySeconds -gt 0) {
+            Start-Sleep -Seconds $DelaySeconds
+        }
+    }
+    return $null
+}
+
+function Invoke-CreateManualAlertWithRecovery {
+    param(
+        [Parameter(Mandatory)][System.Collections.IDictionary]$Body,
+        [Parameter(Mandatory)][string]$Marker,
+        [AllowEmptyString()][string]$IncidentId,
+        [Parameter(Mandatory)][DateTime]$AttemptedAtUtc,
+        [switch]$ReconcileBeforePost
+    )
+
+    $reconciliationStart = $AttemptedAtUtc.ToUniversalTime().AddMinutes(-2)
+    if ($ReconcileBeforePost) {
+        $existingAlert = Wait-ManualAlertByMarker `
+            -Marker $Marker `
+            -IncidentId $IncidentId `
+            -NotBeforeUtc $reconciliationStart `
+            -MaximumAttempts 2 `
+            -DelaySeconds 3
+        if ($null -ne $existingAlert) {
+            Write-Host "Recovered previously submitted alert '$($Body.title)' from Microsoft Graph." -ForegroundColor Cyan
+            return $existingAlert
+        }
+    }
+
+    for ($postAttempt = 1; $postAttempt -le 2; $postAttempt++) {
+        try {
+            return Invoke-MgGraphRequest `
+                -Method POST `
+                -Uri 'https://graph.microsoft.com/beta/security/alerts_v2' `
+                -Body ($Body | ConvertTo-Json -Depth 20 -Compress) `
+                -ContentType 'application/json' `
+                -OutputType PSObject `
+                -ErrorAction Stop
+        }
+        catch {
+            $statusCode = Get-GraphStatusCode -ErrorRecord $_
+            $ambiguousFailure = $null -eq $statusCode -or $statusCode -eq 408 -or $statusCode -eq 429 -or $statusCode -ge 500
+            if (-not $ambiguousFailure) {
+                throw
+            }
+
+            Write-Warning "Alert POST attempt $postAttempt returned an ambiguous HTTP $statusCode result. Checking Microsoft Graph for correlation marker $Marker before any retry."
+            $recoveredAlert = Wait-ManualAlertByMarker `
+                -Marker $Marker `
+                -IncidentId $IncidentId `
+                -NotBeforeUtc $reconciliationStart `
+                -MaximumAttempts 12 `
+                -DelaySeconds 5
+            if ($null -ne $recoveredAlert) {
+                Write-Host "Recovered alert '$($Body.title)' after the POST response was lost." -ForegroundColor Cyan
+                return $recoveredAlert
+            }
+            if ($postAttempt -eq 1) {
+                Write-Warning "No alert with marker $Marker appeared after reconciliation. Retrying this POST once."
+                continue
+            }
+            throw
+        }
+    }
 }
 
 function Get-TenantIdentities {
@@ -584,6 +724,10 @@ if (-not [string]::IsNullOrWhiteSpace($ResumeManifestPath)) {
     if ([int]$manifest.requestedCount -ne $IncidentCount) {
         throw "Resume manifest requested $($manifest.requestedCount) incidents. Re-run with -IncidentCount $($manifest.requestedCount)."
     }
+    $hasPartialIncident = @($manifest.incidents).Count -gt [int]$manifest.completedCount
+    if ($hasPartialIncident -and [int]$manifest.schemaVersion -lt 3) {
+        throw 'This partial manifest predates safe POST-timeout recovery and has no correlation marker for its uncertain alert. Clean up that run or start a fresh run; do not resume it.'
+    }
     $runId = [string]$manifest.runId
     $manifest.succeeded = $false
     $manifest.error = $null
@@ -593,7 +737,7 @@ if (-not [string]::IsNullOrWhiteSpace($ResumeManifestPath)) {
 }
 else {
     $manifest = [ordered]@{
-        schemaVersion     = 2
+        schemaVersion     = 3
         projectVersion    = $ProjectVersion
         runId             = $runId
         startedAtUtc      = [DateTime]::UtcNow.ToString('o')
@@ -770,48 +914,74 @@ try {
             Get-AttackStages -Attack $attack -AlertCount $alertCount
         }
         $incidentId = $null
-        $incidentRecord = [ordered]@{
-            catalogNumber  = $catalogIndex
-            incidentId     = $null
-            incidentWebUrl = $null
-            title          = [string]$attack.title
-            severity       = [string]$attack.severity
-            category       = [string]$attack.category
-            endpoint       = [string]$endpoint.name
-            impactedIdentity = $impactedUserPrincipalName
-            impactedMailbox = $impactedMailboxAddress
-            fictionalMailbox = $fictionalMailboxAddress
-            scenarioContext = switch ([string]$attack.workload) {
-                'SecurityForAI' { 'Security for AI manual proxy' }
-                'Email' { 'Defender for Office 365' }
-                'Identity' { 'Defender for Identity' }
-                'CloudApp' { 'Defender for Cloud Apps' }
-                'DefenderForCloud' { 'Defender for Cloud' }
-                'Endpoint' { 'Defender for Endpoint' }
-                default { 'Microsoft Defender XDR' }
+        $incidentRecord = $null
+        $existingIncidentRecords = @($manifest.incidents)
+        if ($offset -eq $resumeOffset -and $existingIncidentRecords.Count -gt $resumeOffset) {
+            $candidate = $existingIncidentRecords[$resumeOffset]
+            if ([int]$candidate.catalogNumber -ne $catalogIndex -or [string]$candidate.title -ne [string]$attack.title) {
+                throw "The partial manifest incident does not match plan item $catalogIndex ('$([string]$attack.title)')."
             }
-            associationMode = if ($isAiScenario) { 'manualProxy' } else { 'manualStory' }
-            agentAssetLinked = $false
-            agent = if ($isAiScenario) {
-                [ordered]@{
-                    displayName = [string]$agentRecord.displayName
-                    authorityProfile = [string]$agentRecord.authorityProfile
-                    executionMode = [string]$agentRecord.executionMode
-                    blueprintId = [string]$agentRecord.blueprintId
-                    blueprintAppId = [string]$agentRecord.blueprintAppId
-                    blueprintPrincipalId = [string]$agentRecord.blueprintPrincipalId
-                    agentIdentityId = [string]$agentRecord.agentIdentityId
-                    agentRegistrationId = [string]$agentRecord.agentRegistrationId
-                    creationStatus = [string]$agentRecord.creationStatus
-                }
-            } else { $null }
-            status         = 'creating'
-            alerts         = @()
+            $incidentRecord = $candidate
+            $incidentId = [string]$incidentRecord.incidentId
+            if (-not $incidentRecord.ContainsKey('pendingAlert')) {
+                $incidentRecord['pendingAlert'] = $null
+            }
+            $recordedStages = @($incidentRecord.alerts | ForEach-Object { [int]$_.stage })
+            $expectedRecordedStages = if ($recordedStages.Count -eq 0) { @() } else { @(1..$recordedStages.Count) }
+            if ($recordedStages.Count -gt $stages.Count -or ($recordedStages -join ',') -ne ($expectedRecordedStages -join ',')) {
+                throw "The partial incident $($incidentRecord.incidentId) has a non-sequential alert manifest and cannot be resumed automatically."
+            }
+            if ($null -ne $incidentRecord.pendingAlert -and [int]$incidentRecord.pendingAlert.stage -ne ($recordedStages.Count + 1)) {
+                throw "The partial incident $($incidentRecord.incidentId) has an unexpected pending alert stage and cannot be resumed automatically."
+            }
+            Write-Host "Resuming partial incident $($incidentRecord.incidentId) at alert $($recordedStages.Count + 1) of $($stages.Count)." -ForegroundColor Cyan
         }
-        $manifest.incidents = @($manifest.incidents) + $incidentRecord
-        Save-RunManifest -Manifest $manifest -Path $manifestPath
+        else {
+            $incidentRecord = [ordered]@{
+                catalogNumber  = $catalogIndex
+                incidentId     = $null
+                incidentWebUrl = $null
+                title          = [string]$attack.title
+                severity       = [string]$attack.severity
+                category       = [string]$attack.category
+                endpoint       = [string]$endpoint.name
+                impactedIdentity = $impactedUserPrincipalName
+                impactedMailbox = $impactedMailboxAddress
+                fictionalMailbox = $fictionalMailboxAddress
+                scenarioContext = switch ([string]$attack.workload) {
+                    'SecurityForAI' { 'Security for AI manual proxy' }
+                    'Email' { 'Defender for Office 365' }
+                    'Identity' { 'Defender for Identity' }
+                    'CloudApp' { 'Defender for Cloud Apps' }
+                    'DefenderForCloud' { 'Defender for Cloud' }
+                    'Endpoint' { 'Defender for Endpoint' }
+                    default { 'Microsoft Defender XDR' }
+                }
+                associationMode = if ($isAiScenario) { 'manualProxy' } else { 'manualStory' }
+                agentAssetLinked = $false
+                agent = if ($isAiScenario) {
+                    [ordered]@{
+                        displayName = [string]$agentRecord.displayName
+                        authorityProfile = [string]$agentRecord.authorityProfile
+                        executionMode = [string]$agentRecord.executionMode
+                        blueprintId = [string]$agentRecord.blueprintId
+                        blueprintAppId = [string]$agentRecord.blueprintAppId
+                        blueprintPrincipalId = [string]$agentRecord.blueprintPrincipalId
+                        agentIdentityId = [string]$agentRecord.agentIdentityId
+                        agentRegistrationId = [string]$agentRecord.agentRegistrationId
+                        creationStatus = [string]$agentRecord.creationStatus
+                    }
+                } else { $null }
+                status         = 'creating'
+                alerts         = @()
+                pendingAlert   = $null
+            }
+            $manifest.incidents = @($manifest.incidents) + $incidentRecord
+            Save-RunManifest -Manifest $manifest -Path $manifestPath
+        }
 
-        for ($stageOffset = 0; $stageOffset -lt $stages.Count; $stageOffset++) {
+        $firstPendingStageOffset = @($incidentRecord.alerts).Count
+        for ($stageOffset = $firstPendingStageOffset; $stageOffset -lt $stages.Count; $stageOffset++) {
             $stageNumber = $stageOffset + 1
             $stage = $stages[$stageOffset]
             $entities = New-AlertEntities `
@@ -825,10 +995,17 @@ try {
             if ($isAiScenario) {
                 $entities = Add-AiAgentEntities -Entities $entities -AgentRecord $agentRecord
             }
+            $correlationMarker = "[MXDR-SEED:$runId`:$catalogIndex`:$stageNumber]"
+            $alertDescription = Expand-StoryText `
+                -Text ([string]$stage.description) `
+                -DeviceName ([string]$endpoint.name) `
+                -UserPrincipalName $impactedUserPrincipalName `
+                -AgentRecord $agentRecord
+            $alertDescription = "$alertDescription`n`nSeeder correlation marker: $correlationMarker"
             $alertBody = [ordered]@{
                 '@odata.type'             = '#microsoft.graph.security.manualAlert'
                 title                     = [string]$stage.title
-                description               = Expand-StoryText -Text ([string]$stage.description) -DeviceName ([string]$endpoint.name) -UserPrincipalName $impactedUserPrincipalName -AgentRecord $agentRecord
+                description               = $alertDescription
                 category                  = [string]$stage.category
                 severity                  = Get-StageSeverity -IncidentSeverity ([string]$attack.severity) -StageNumber $stageNumber
                 recommendedActions        = [string]$stage.recommendedActions
@@ -842,7 +1019,27 @@ try {
 
             $globalAlertNumber = $manifest.completedAlertCount + 1
             Write-Progress -Activity 'Creating Defender XDR incidents' -Status "Incident $catalogIndex, alert $stageNumber of ${alertCount}: $($stage.title)" -PercentComplete (($globalAlertNumber / $totalAlertCount) * 100)
-            $alertResponse = Invoke-CreateManualAlert -Body $alertBody
+            $existingPendingAlert = $incidentRecord.pendingAlert
+            $reconcileBeforePost = $null -ne $existingPendingAlert -and [string]$existingPendingAlert.marker -eq $correlationMarker
+            $attemptedAtUtc = if ($reconcileBeforePost) {
+                [DateTime]::Parse([string]$existingPendingAlert.attemptedAtUtc).ToUniversalTime()
+            }
+            else {
+                [DateTime]::UtcNow
+            }
+            $incidentRecord.pendingAlert = [ordered]@{
+                stage = $stageNumber
+                marker = $correlationMarker
+                attemptedAtUtc = $attemptedAtUtc.ToString('o')
+                title = [string]$stage.title
+            }
+            Save-RunManifest -Manifest $manifest -Path $manifestPath
+            $alertResponse = Invoke-CreateManualAlertWithRecovery `
+                -Body $alertBody `
+                -Marker $correlationMarker `
+                -IncidentId $incidentId `
+                -AttemptedAtUtc $attemptedAtUtc `
+                -ReconcileBeforePost:$reconcileBeforePost
             if ($stageNumber -eq 1) {
                 $incidentId = [string]$alertResponse.incidentId
                 if ([string]::IsNullOrWhiteSpace($incidentId)) {
@@ -867,7 +1064,9 @@ try {
                 title       = [string]$stage.title
                 severity    = [string]$alertBody.severity
                 category    = [string]$stage.category
+                correlationMarker = $correlationMarker
             }
+            $incidentRecord.pendingAlert = $null
             $manifest.completedAlertCount++
             Save-RunManifest -Manifest $manifest -Path $manifestPath
 
@@ -918,7 +1117,7 @@ finally {
 
 if ($null -ne $executionError) {
     $remainingCount = $IncidentCount - $manifest.completedCount
-    Write-Warning "Bulk seeding stopped after $($manifest.completedCount) complete incident(s) and $($manifest.completedAlertCount) alert(s). Review any partial incident, then resume with the same inputs plus -ResumeManifestPath '$manifestPath'. Remaining incidents: $remainingCount."
+    Write-Warning "Bulk seeding stopped after $($manifest.completedCount) complete incident(s) and $($manifest.completedAlertCount) alert(s). Resume with the same inputs plus -ResumeManifestPath '$manifestPath'; schema-3 manifests reconcile any pending alert and continue the same partial incident. Remaining incidents: $remainingCount."
     throw $executionError
 }
 

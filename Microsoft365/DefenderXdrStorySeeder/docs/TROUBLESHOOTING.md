@@ -64,10 +64,12 @@ stops, inspect the partial manifest before resuming.
 
 ## A run stopped after creating some alerts
 
-Do not immediately rerun the same range. Check the latest `artifacts\bulk-seed-run-*.json` and the
-Defender portal. The script does not retry POST because an unconfirmed successful request could be
-duplicated. Resume with the same input counts and `-ResumeManifestPath` only after confirming the
-partial incident shown in the manifest.
+Use the latest `artifacts\bulk-seed-run-*.json` with the same incident, agent, and AI-incident counts
+plus `-ResumeManifestPath`. A schema-3 manifest reuses the existing partial incident, checks its
+pending correlation marker, and continues at the first unrecorded stage. Do not resume a partial
+schema-2 manifest created by the earlier 0.2.4 package; the revised script rejects it because that
+manifest cannot prove whether the timed-out POST created an alert. Clean up that old run and start a
+fresh one instead.
 
 ## Agent creation is partial or unavailable
 
