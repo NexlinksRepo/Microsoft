@@ -44,7 +44,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-$ProjectVersion = '0.2.0-beta'
+$ProjectVersion = '0.2.1-beta'
 
 . (Join-Path $PSScriptRoot 'DefenderXdrStorySeeder.Agent365.ps1')
 
@@ -671,21 +671,39 @@ try {
 
     if ($CreateDemoAiAgents -and @($manifest.agents).Count -eq 0) {
         Write-Host "Creating up to $DemoAgentCount dormant demo AI agent identity set(s)..." -ForegroundColor Cyan
+        $skipAgentRegistration = $false
+        $registryDenialWasReported = $false
         for ($agentOffset = 0; $agentOffset -lt $DemoAgentCount; $agentOffset++) {
             $definition = $allAgentDefinitions[$agentOffset % $allAgentDefinitions.Count]
             $agentRecord = New-DemoAiAgent `
                 -Definition $definition `
                 -OwnerId ([string]$ownerIdentity[0].id) `
                 -RunId $runId `
-                -Sequence ($agentOffset + 1)
+                -Sequence ($agentOffset + 1) `
+                -SkipAgentRegistration:$skipAgentRegistration
             $manifest.agents = @($manifest.agents) + $agentRecord
             Save-RunManifest -Manifest $manifest -Path $manifestPath
-            if ([string]$agentRecord.creationStatus -ne 'created') {
+            if ($null -ne $agentRecord.registrationError -and @('401', '403') -contains [string]$agentRecord.registrationError.statusCode) {
+                $skipAgentRegistration = $true
+                if (-not $registryDenialWasReported) {
+                    Write-Warning "Agent Registry rejected the first registration with HTTP $($agentRecord.registrationError.statusCode). Remaining registry calls will be skipped, while Entra agent identities continue. Response: $($agentRecord.registrationError.responseBody)"
+                    $registryDenialWasReported = $true
+                }
+            }
+            elseif ([string]$agentRecord.creationStatus -ne 'created' -and -not $skipAgentRegistration) {
                 Write-Warning "Agent '$($agentRecord.displayName)' was created only partially. AI incidents will still use a truthful manual proxy association."
             }
         }
         $manifest.capabilities.entraAgentId = if (@($manifest.agents | Where-Object { $_.componentStatus.blueprint -eq 'created' }).Count -gt 0) { 'available' } else { 'unavailable' }
-        $manifest.capabilities.agentRegistry = if (@($manifest.agents | Where-Object { $_.componentStatus.agentRegistration -eq 'created' }).Count -gt 0) { 'available' } else { 'unavailable' }
+        $manifest.capabilities.agentRegistry = if (@($manifest.agents | Where-Object { $_.componentStatus.agentRegistration -eq 'created' }).Count -gt 0) {
+            'available'
+        }
+        elseif (@($manifest.agents | Where-Object { $null -ne $_.registrationError -and @('401', '403') -contains [string]$_.registrationError.statusCode }).Count -gt 0) {
+            'denied'
+        }
+        else {
+            'unavailable'
+        }
         Save-RunManifest -Manifest $manifest -Path $manifestPath
     }
 

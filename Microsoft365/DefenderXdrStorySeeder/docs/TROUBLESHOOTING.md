@@ -41,7 +41,7 @@ for the write APIs. A role activation delay can require a new sign-in.
 ## `400 Bad Request` while updating an incident
 
 Use the current version. Earlier packages could serialize a one-item `customTags` collection as a
-scalar. Version `0.2.0-beta` does not depend on a synthetic custom tag and sends only supported
+scalar. Version `0.2.1-beta` does not depend on a synthetic custom tag and sends only supported
 incident fields.
 
 ## `404 Not Found` after creating the first alert
@@ -64,6 +64,19 @@ signed-in account lacks an Agent ID role, or consent was not granted for an opti
 The manifest records each blueprint, principal, identity, and registration result separately. The
 incident run continues with `manualProxy` stories and does not claim that a native agent asset was
 linked.
+
+If blueprints, principals, and identities show `created` but registration shows `unavailable`, run
+the 0.2.1 registration-only retry against the original manifest. Do not rerun the bulk seeder:
+
+```powershell
+pwsh -File .\Start-DefenderAgentRegistrationRetry.ps1 `
+  'global.admin@contoso.com' `
+  'C:\path\to\bulk-seed-run-20261109-170925.json'
+```
+
+If the corrected request still returns 403, inspect `registrationRetries[].failed[].responseBody`
+in the manifest. That response distinguishes missing consent from an Agent 365 license or rollout
+gate.
 
 ## Dormant agents have no Defender risk rating
 

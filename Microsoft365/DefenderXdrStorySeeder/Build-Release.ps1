@@ -25,6 +25,8 @@ $runtimeFiles = @(
     'Start-DefenderBulkSeed.ps1'
     'Invoke-DefenderBulkSeeder.ps1'
     'DefenderXdrStorySeeder.Agent365.ps1'
+    'Start-DefenderAgentRegistrationRetry.ps1'
+    'Invoke-DefenderAgentRegistrationRetry.ps1'
     'Start-DefenderBulkCleanup.ps1'
     'Invoke-DefenderBulkCleanup.ps1'
     'README.md'

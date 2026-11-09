@@ -28,6 +28,8 @@ $requiredFiles = @(
     'Start-DefenderBulkSeed.ps1'
     'Invoke-DefenderBulkSeeder.ps1'
     'DefenderXdrStorySeeder.Agent365.ps1'
+    'Start-DefenderAgentRegistrationRetry.ps1'
+    'Invoke-DefenderAgentRegistrationRetry.ps1'
     'Start-DefenderBulkCleanup.ps1'
     'Invoke-DefenderBulkCleanup.ps1'
     'Build-Release.ps1'
@@ -54,6 +56,8 @@ $scriptFiles = @(
     'Start-DefenderBulkSeed.ps1'
     'Invoke-DefenderBulkSeeder.ps1'
     'DefenderXdrStorySeeder.Agent365.ps1'
+    'Start-DefenderAgentRegistrationRetry.ps1'
+    'Invoke-DefenderAgentRegistrationRetry.ps1'
     'Start-DefenderBulkCleanup.ps1'
     'Invoke-DefenderBulkCleanup.ps1'
     'Build-Release.ps1'
@@ -76,10 +80,13 @@ $seederText = Get-Content -LiteralPath (Join-Path $projectRoot 'Invoke-DefenderB
 $cleanupText = Get-Content -LiteralPath (Join-Path $projectRoot 'Invoke-DefenderBulkCleanup.ps1') -Raw
 $launcherText = Get-Content -LiteralPath (Join-Path $projectRoot 'Start-DefenderBulkSeed.ps1') -Raw
 $agentHelperText = Get-Content -LiteralPath (Join-Path $projectRoot 'DefenderXdrStorySeeder.Agent365.ps1') -Raw
+$registrationRetryText = Get-Content -LiteralPath (Join-Path $projectRoot 'Invoke-DefenderAgentRegistrationRetry.ps1') -Raw
 $readmeText = Get-Content -LiteralPath (Join-Path $projectRoot 'README.md') -Raw
 $changelogText = Get-Content -LiteralPath (Join-Path $projectRoot 'CHANGELOG.md') -Raw
 Assert-Condition -Condition ($seederText.Contains("`$ProjectVersion = '$version'")) -Message 'Seeder version matches VERSION'
 Assert-Condition -Condition ($cleanupText.Contains("`$ProjectVersion = '$version'")) -Message 'Cleanup version matches VERSION'
+Assert-Condition -Condition ($registrationRetryText.Contains("`$ProjectVersion = '$version'")) -Message 'Registration retry version matches VERSION'
+Assert-Condition -Condition ($agentHelperText.Contains("`$script:AgentSeederVersion = '$version'")) -Message 'Agent helper version matches VERSION'
 Assert-Condition -Condition ($readmeText.Contains("Current version: **$version**")) -Message 'README version matches VERSION'
 Assert-Condition -Condition ($changelogText.Contains("## $version")) -Message 'Changelog contains the current version'
 Assert-Condition -Condition ($launcherText.Contains("How many incidents should be created?")) -Message 'Launcher prompts for incident count'
@@ -145,6 +152,12 @@ Assert-Condition -Condition ($seederText.Contains("associationMode = if (`$isAiS
 Assert-Condition -Condition ($seederText.Contains('agentAssetLinked = $false')) -Message 'AI incidents do not claim native asset linkage'
 Assert-Condition -Condition ($agentHelperText.Contains('credentialsCreated       = $false')) -Message 'Demo agents do not create stored credentials'
 Assert-Condition -Condition ($agentHelperText.Contains('permissionGrantsCreated  = @()')) -Message 'Demo agents do not auto-grant declared permissions'
+Assert-Condition -Condition (-not $agentHelperText.Contains('managedByAppId =')) -Message 'Registry payload does not misidentify the blueprint as the calling management app'
+Assert-Condition -Condition ($agentHelperText.Contains('ownerIds = @($OwnerId)')) -Message 'Registry payload satisfies the owner requirement'
+Assert-Condition -Condition ($agentHelperText.Contains('Get-AgentGraphErrorInfo')) -Message 'Agent errors retain status and response details'
+Assert-Condition -Condition ($registrationRetryText.Contains('Register-DemoAiAgent')) -Message 'Registration-only retry reuses existing agent identities'
+Assert-Condition -Condition (-not $registrationRetryText.Contains('New-DemoAiAgent')) -Message 'Registration-only retry cannot create duplicate agent identities'
+Assert-Condition -Condition ($registrationRetryText.Contains("'AgentRegistration.ReadWrite.All' -notin")) -Message 'Registration retry verifies the delegated scope is present'
 Assert-Condition -Condition ($cleanupText.Contains('agentRegistrations/$registrationId')) -Message 'Cleanup removes only recorded registry IDs'
 Assert-Condition -Condition ($cleanupText.Contains('microsoft.graph.agentIdentityBlueprint')) -Message 'Cleanup uses blueprint cascade deletion'
 

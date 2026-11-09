@@ -1,6 +1,33 @@
 #requires -Version 7.2
 
 Set-StrictMode -Version Latest
+$script:AgentSeederVersion = '0.2.1-beta'
+
+function Get-AgentGraphErrorInfo {
+    param([Parameter(Mandatory)]$ErrorRecord)
+
+    $statusCode = $null
+    try {
+        if ($null -ne $ErrorRecord.Exception.Response.StatusCode) {
+            $statusCode = [int]$ErrorRecord.Exception.Response.StatusCode
+        }
+    }
+    catch {
+        $statusCode = $null
+    }
+
+    $responseBody = [string]$ErrorRecord.ErrorDetails.Message
+    if ([string]::IsNullOrWhiteSpace($responseBody)) {
+        $responseBody = [string]$ErrorRecord.Exception.Message
+    }
+
+    return [ordered]@{
+        statusCode = $statusCode
+        message = [string]$ErrorRecord.Exception.Message
+        responseBody = $responseBody
+        capturedAtUtc = [DateTime]::UtcNow.ToString('o')
+    }
+}
 
 function Get-AgentDeclaredResourceAccess {
     param([Parameter(Mandatory)][System.Collections.IDictionary]$Definition)
@@ -57,12 +84,78 @@ function Invoke-AgentGraphPost {
     return Invoke-MgGraphRequest @parameters
 }
 
+function New-AgentRegistrationBody {
+    param(
+        [Parameter(Mandatory)][System.Collections.IDictionary]$Definition,
+        [Parameter(Mandatory)][System.Collections.IDictionary]$AgentRecord,
+        [Parameter(Mandatory)][string]$OwnerId
+    )
+
+    $now = [DateTime]::UtcNow.ToString('o')
+    $body = [ordered]@{
+        displayName = "[DXR Demo] $([string]$Definition.name)"
+        description = [string]$Definition.description
+        ownerIds = @($OwnerId)
+        createdBy = $OwnerId
+        lastPublishedBy = $OwnerId
+        sourceCreatedDateTime = $now
+        sourceLastModifiedDateTime = $now
+        sourceAgentId = [string]$AgentRecord.registrationSourceId
+        originatingStore = 'DefenderXdrStorySeeder'
+        agentIdentityBlueprintId = [string]$AgentRecord.blueprintId
+        agentCard = [ordered]@{
+            name = [string]$Definition.name
+            version = $script:AgentSeederVersion
+            description = [string]$Definition.description
+            provider = 'Defender XDR Story Seeder'
+            capabilities = [ordered]@{ streaming = $false; pushNotifications = $false }
+            defaultInputModes = @('text')
+            defaultOutputModes = @('text')
+            skills = @([ordered]@{
+                id = "demo-$([int]$Definition.id)"
+                name = [string]$Definition.name
+                description = [string]$Definition.description
+            })
+            securityProfile = [ordered]@{
+                authorityProfile = [string]$Definition.authorityProfile
+                executionMode = [string]$Definition.executionMode
+                declaredPermissions = @($Definition.permissions)
+                credentialsCreated = $false
+                consentGrantsCreated = $false
+                dormantDemo = $true
+            }
+        }
+    }
+    if (-not [string]::IsNullOrWhiteSpace([string]$AgentRecord.agentIdentityId)) {
+        $body.agentIdentityId = [string]$AgentRecord.agentIdentityId
+    }
+
+    # ownerIds satisfies the API's owner-or-managing-app requirement. Do not set
+    # managedByAppId to the agent blueprint app ID: the interactive caller is not
+    # that application, and tenants can reject that mismatch with HTTP 403.
+    return $body
+}
+
+function Register-DemoAiAgent {
+    param(
+        [Parameter(Mandatory)][System.Collections.IDictionary]$Definition,
+        [Parameter(Mandatory)][System.Collections.IDictionary]$AgentRecord,
+        [Parameter(Mandatory)][string]$OwnerId
+    )
+
+    $body = New-AgentRegistrationBody -Definition $Definition -AgentRecord $AgentRecord -OwnerId $OwnerId
+    return Invoke-AgentGraphPost `
+        -Uri 'https://graph.microsoft.com/beta/copilot/agentRegistrations' `
+        -Body $body
+}
+
 function New-DemoAiAgent {
     param(
         [Parameter(Mandatory)][System.Collections.IDictionary]$Definition,
         [Parameter(Mandatory)][string]$OwnerId,
         [Parameter(Mandatory)][string]$RunId,
-        [Parameter(Mandatory)][int]$Sequence
+        [Parameter(Mandatory)][int]$Sequence,
+        [switch]$SkipAgentRegistration
     )
 
     $record = [ordered]@{
@@ -81,6 +174,7 @@ function New-DemoAiAgent {
         agentIdentityId          = $null
         agentIdentityAppId       = $null
         agentRegistrationId      = $null
+        registrationError         = $null
         registrationSourceId     = "defender-story-seeder-$RunId-$Sequence"
         creationStatus           = 'creating'
         componentStatus          = [ordered]@{
@@ -146,55 +240,20 @@ function New-DemoAiAgent {
         $record.errors = @($record.errors) + "agentIdentity: $($_.Exception.Message)"
     }
 
-    try {
-        $now = [DateTime]::UtcNow.ToString('o')
-        $registrationBody = [ordered]@{
-            displayName = "[DXR Demo] $([string]$Definition.name)"
-            description = [string]$Definition.description
-            ownerIds = @($OwnerId)
-            createdBy = $OwnerId
-            lastPublishedBy = $OwnerId
-            sourceCreatedDateTime = $now
-            sourceLastModifiedDateTime = $now
-            sourceAgentId = [string]$record.registrationSourceId
-            originatingStore = 'DefenderXdrStorySeeder'
-            managedByAppId = [string]$record.blueprintAppId
-            agentIdentityBlueprintId = [string]$record.blueprintId
-            agentCard = [ordered]@{
-                name = [string]$Definition.name
-                version = '0.2.0-beta'
-                description = [string]$Definition.description
-                provider = 'Defender XDR Story Seeder'
-                capabilities = [ordered]@{ streaming = $false; pushNotifications = $false }
-                defaultInputModes = @('text')
-                defaultOutputModes = @('text')
-                skills = @([ordered]@{
-                    id = "demo-$([int]$Definition.id)"
-                    name = [string]$Definition.name
-                    description = [string]$Definition.description
-                })
-                securityProfile = [ordered]@{
-                    authorityProfile = [string]$Definition.authorityProfile
-                    executionMode = [string]$Definition.executionMode
-                    declaredPermissions = @($Definition.permissions)
-                    credentialsCreated = $false
-                    consentGrantsCreated = $false
-                    dormantDemo = $true
-                }
-            }
-        }
-        if (-not [string]::IsNullOrWhiteSpace([string]$record.agentIdentityId)) {
-            $registrationBody.agentIdentityId = [string]$record.agentIdentityId
-        }
-        $registration = Invoke-AgentGraphPost `
-            -Uri 'https://graph.microsoft.com/beta/copilot/agentRegistrations' `
-            -Body $registrationBody
-        $record.agentRegistrationId = [string]$registration.id
-        $record.componentStatus.agentRegistration = 'created'
+    if ($SkipAgentRegistration) {
+        $record.componentStatus.agentRegistration = 'skippedAfterTenantDenial'
     }
-    catch {
-        $record.componentStatus.agentRegistration = 'unavailable'
-        $record.errors = @($record.errors) + "agentRegistration: $($_.Exception.Message)"
+    else {
+        try {
+            $registration = Register-DemoAiAgent -Definition $Definition -AgentRecord $record -OwnerId $OwnerId
+            $record.agentRegistrationId = [string]$registration.id
+            $record.componentStatus.agentRegistration = 'created'
+        }
+        catch {
+            $record.componentStatus.agentRegistration = 'unavailable'
+            $record.registrationError = Get-AgentGraphErrorInfo -ErrorRecord $_
+            $record.errors = @($record.errors) + "agentRegistration: $($record.registrationError.message) Response: $($record.registrationError.responseBody)"
+        }
     }
 
     $createdComponentCount = @($record.componentStatus.Values | Where-Object { $_ -eq 'created' }).Count

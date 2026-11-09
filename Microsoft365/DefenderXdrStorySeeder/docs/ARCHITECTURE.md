@@ -7,6 +7,8 @@
 | `Start-DefenderBulkSeed.ps1` | Minimal executing launcher that requires only a UPN. |
 | `Invoke-DefenderBulkSeeder.ps1` | Planning, authentication, identity discovery, alert creation, incident updates, retries, and manifests. |
 | `DefenderXdrStorySeeder.Agent365.ps1` | Dormant blueprint, principal, child identity, and registry-card creation. |
+| `Start-DefenderAgentRegistrationRetry.ps1` | UPN-first launcher for retrying only missing registry cards from a manifest. |
+| `Invoke-DefenderAgentRegistrationRetry.ps1` | Scope validation, registration-only recovery, detailed error capture, and incremental manifest updates. |
 | `Start-DefenderBulkCleanup.ps1` | Minimal executing cleanup launcher. |
 | `Invoke-DefenderBulkCleanup.ps1` | Active-alert discovery, safe selection, resolution, incident protection, and cleanup manifests. |
 | `catalog/attack-catalog.json` | Fifty primary incident stories and their first alert. |

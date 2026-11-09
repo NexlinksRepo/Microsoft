@@ -1,6 +1,6 @@
 # Defender XDR Story Seeder
 
-Current version: **0.2.0-beta**
+Current version: **0.2.1-beta**
 
 Defender XDR Story Seeder creates a disposable, presentation-friendly incident dataset in the
 Microsoft Defender portal without Microsoft Sentinel or a fleet of physical or virtual endpoints.
@@ -12,6 +12,10 @@ Version 0.2 adds an interactive run planner and optional dormant AI-agent invent
 by the tenant, it creates Entra agent identity blueprints, blueprint principals, child agent
 identities, and Agent 365 registry cards directly through Microsoft Graph. It then creates manual
 Defender XDR proxy stories that carry those object identifiers in their narratives and evidence.
+
+Version 0.2.1 corrects Agent Registry ownership payloads, captures complete Graph error details,
+stops repeating a tenant-wide 401/403 registration failure, and adds a registration-only retry that
+reuses existing identities and incidents.
 
 > This is a security-testing and demonstration utility. Run it only in a tenant where you are
 > authorized to create hundreds of Defender alerts and incidents. A default run creates 50
@@ -204,6 +208,23 @@ Always inspect the partial incident in the manifest before resuming. A network f
 can create an alert even if the client did not receive the response; POST requests are deliberately
 not retried automatically to avoid duplicates.
 
+## Retry Agent 365 registration without creating duplicates
+
+If a 0.2.0 run created blueprints, principals, and child identities but Agent Registry returned
+`403 Forbidden`, use the 0.2.1 retry launcher. Supply the original manifest as the second argument:
+
+```powershell
+pwsh -File .\Start-DefenderAgentRegistrationRetry.ps1 `
+  'global.admin@contoso.com' `
+  'C:\path\to\bulk-seed-run-20261109-170925.json'
+```
+
+The retry requests only `AgentRegistration.ReadWrite.All` and `User.Read`. It verifies that the
+registration permission is present in the token, updates the original manifest after every agent,
+and records the full HTTP status and Graph response for any remaining failure. It does not recreate
+blueprints, principals, identities, incidents, or alerts. If the manifest already lives under this
+package's `artifacts` directory, omit the second argument to use the newest seed manifest.
+
 ## Clean up before another run
 
 Resolve only the active alerts that match this package's catalog and close the safe incidents:
@@ -289,6 +310,14 @@ avoided.
 | `UseDeviceCode` | Off | Use device-code authentication. |
 | `OutputDirectory` | `artifacts` | Local directory for cleanup manifests. |
 
+### `Start-DefenderAgentRegistrationRetry.ps1`
+
+| Parameter | Default | Description |
+| --- | --- | --- |
+| `GlobalAdminUpn` | Required | Login hint used for delegated sign-in. |
+| `ManifestPath` | Newest local seed manifest | Existing 0.2 manifest containing agent IDs. |
+| `UseDeviceCode` | Off | Use device-code authentication. |
+
 ## Run manifests and privacy
 
 Manifests can contain tenant IDs, administrator UPNs, discovered user UPNs, mailbox addresses,
@@ -347,5 +376,5 @@ The version comes from `VERSION`; the committed scripts and changelog must use t
 This project is licensed under the repository's GNU General Public License, version 3. Microsoft
 product names identify the services used and do not imply Microsoft affiliation or endorsement.
 
-Version `0.2.0-beta` is suitable for authorized demonstrations and lab tenants. It is not a
+Version `0.2.1-beta` is suitable for authorized demonstrations and lab tenants. It is not a
 production telemetry simulator or a substitute for real Defender workload onboarding.
