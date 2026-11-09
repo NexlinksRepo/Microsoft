@@ -1,6 +1,6 @@
 # Defender XDR Story Seeder
 
-Current version: **0.2.2-beta**
+Current version: **0.2.3-beta**
 
 Defender XDR Story Seeder creates a disposable, presentation-friendly incident dataset in the
 Microsoft Defender portal without Microsoft Sentinel or a fleet of physical or virtual endpoints.
@@ -21,6 +21,9 @@ Version 0.2.2 adds a dedicated agent-only cleanup launcher. It recursively disco
 manifests, deduplicates their recorded object IDs, and also finds blueprint names beginning exactly
 with `[DXR Demo]`. It removes only those registrations, blueprints, child identities, and blueprint
 principals without reading or changing Defender alerts or incidents.
+
+Version 0.2.3 fixes single-page Agent ID blueprint discovery when Microsoft Graph correctly omits
+the optional `@odata.nextLink` property.
 
 > This is a security-testing and demonstration utility. Run it only in a tenant where you are
 > authorized to create hundreds of Defender alerts and incidents. A default run creates 50
@@ -424,6 +427,7 @@ The version comes from `VERSION`; the committed scripts and changelog must use t
 This project is licensed under the repository's GNU General Public License, version 3. Microsoft
 product names identify the services used and do not imply Microsoft affiliation or endorsement.
 
-Version `0.2.2-beta` is suitable for authorized demonstrations and lab tenants. It is not a
+Version `0.2.3-beta` is suitable for authorized demonstrations and lab tenants. It is not a
 production telemetry simulator or a substitute for real Defender workload onboarding.
+
 

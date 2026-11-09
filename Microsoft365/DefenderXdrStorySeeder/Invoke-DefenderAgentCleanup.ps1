@@ -27,7 +27,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-$ProjectVersion = '0.2.2-beta'
+$ProjectVersion = '0.2.3-beta'
 
 function Install-GraphAuthenticationModule {
     $moduleName = 'Microsoft.Graph.Authentication'
@@ -116,7 +116,13 @@ function Get-PrefixedAgentBlueprintRecords {
                 discoverySource = "namePrefix:$Prefix"
             })
         }
-        $uri = [string]$response.'@odata.nextLink'
+        $nextLinkProperty = $response.PSObject.Properties['@odata.nextLink']
+        $uri = if ($null -ne $nextLinkProperty) {
+            [string]$nextLinkProperty.Value
+        }
+        else {
+            $null
+        }
     } while (-not [string]::IsNullOrWhiteSpace($uri))
     return @($records)
 }
@@ -376,4 +382,5 @@ else {
     FailedObjects = $failedCount
     ManifestPath = $cleanupManifestPath
 }
+
 

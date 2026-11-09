@@ -41,7 +41,7 @@ for the write APIs. A role activation delay can require a new sign-in.
 ## `400 Bad Request` while updating an incident
 
 Use the current version. Earlier packages could serialize a one-item `customTags` collection as a
-scalar. Version `0.2.2-beta` does not depend on a synthetic custom tag and sends only supported
+scalar. Version `0.2.3-beta` does not depend on a synthetic custom tag and sends only supported
 incident fields.
 
 ## `404 Not Found` after creating the first alert
@@ -141,4 +141,5 @@ throttled during a large cleanup.
 Share the project version, PowerShell version, operation, HTTP status, and redacted error text. Do
 not publish manifests, tenant IDs, UPNs, alert IDs, incident IDs, portal URLs, access tokens, or Graph
 response bodies containing tenant evidence.
+
 

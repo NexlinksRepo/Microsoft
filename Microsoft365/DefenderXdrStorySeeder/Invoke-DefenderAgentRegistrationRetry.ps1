@@ -19,7 +19,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-$ProjectVersion = '0.2.2-beta'
+$ProjectVersion = '0.2.3-beta'
 
 . (Join-Path $PSScriptRoot 'DefenderXdrStorySeeder.Agent365.ps1')
 
@@ -216,4 +216,5 @@ if ($registered -gt 0) {
     Failed = $failed
     ManifestPath = $resolvedManifestPath
 }
+
 
