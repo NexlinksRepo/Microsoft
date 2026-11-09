@@ -8,7 +8,7 @@ Practical Microsoft administration and assessment tools by Phil Kinsley.
 | --- | --- | --- | --- |
 | [Microsoft Intune](Intune/) | [Intune Endpoint Readiness Collector](Intune/IntuneReadinessCollector/) | 1.0.5 | Collect read-only Microsoft Graph evidence for an Intune readiness review. |
 | [Microsoft 365](Microsoft365/) | [M365 Sign-in Audit Report](Microsoft365/M365SignInAuditReport/) | 0.0.1-beta | Collect interactive-user sign-ins and create a daily HTML security audit report. |
-| [Microsoft 365](Microsoft365/) | [Defender XDR Story Seeder](Microsoft365/DefenderXdrStorySeeder/) | 0.1.0-beta | Populate a Defender XDR tenant with documented demonstration incidents, alerts, identities, and fictional assets. |
+| [Microsoft 365](Microsoft365/) | [Defender XDR Story Seeder](Microsoft365/DefenderXdrStorySeeder/) | 0.2.0-beta | Populate Defender XDR with demonstration incidents and optional dormant Agent 365 identities. |
 
 ## Choose a project
 
@@ -36,8 +36,9 @@ anomalies, then creates a self-contained Nexlinks-branded HTML report.
 ### Defender XDR Story Seeder
 
 Use this project to populate an authorized lab or demonstration tenant with up to 50 Defender XDR
-incident stories and 549 manual alerts. It randomizes tenant identities, attaches fictional endpoint
-and mailbox evidence, and includes a selective cleanup utility that protects unrelated active alerts.
+incident stories and 549 manual alerts. It can also create dormant Entra agent identity blueprints,
+agent identities, and Agent 365 registry cards, then associate truthful manual AI proxy stories with
+their identifiers. Cleanup protects unrelated active alerts and targets only recorded agent objects.
 
 - [Setup, operation and permissions](Microsoft365/DefenderXdrStorySeeder/README.md)
 - [Architecture and data flow](Microsoft365/DefenderXdrStorySeeder/docs/ARCHITECTURE.md)
@@ -73,7 +74,7 @@ For GitHub Releases, use project-prefixed tags such as:
 
 - `intune-readiness-collector/v1.0.5`
 - `m365-signin-audit/v0.0.1-beta`
-- `defender-xdr-story-seeder/v0.1.0-beta`
+- `defender-xdr-story-seeder/v0.2.0-beta`
 
 ## Scope and privacy
 

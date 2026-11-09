@@ -9,6 +9,14 @@ param(
     [ValidateRange(1, 50)]
     [int]$IncidentCount = 50,
 
+    [switch]$CreateDemoAiAgents,
+
+    [ValidateRange(0, 50)]
+    [int]$DemoAgentCount = 10,
+
+    [ValidateRange(0, 50)]
+    [int]$AiIncidentCount = 0,
+
     [ValidateRange(1, 50)]
     [int]$StartAt = 1,
 
@@ -19,6 +27,8 @@ param(
 
     [string]$CatalogPath = (Join-Path $PSScriptRoot 'catalog\attack-catalog.json'),
 
+    [string]$AiAgentCatalogPath = (Join-Path $PSScriptRoot 'catalog\ai-agent-catalog.json'),
+
     [string]$EndpointRosterPath = (Join-Path $PSScriptRoot 'catalog\endpoint-roster.json'),
 
     [string]$MailboxRosterPath = (Join-Path $PSScriptRoot 'catalog\mailbox-roster.json'),
@@ -27,12 +37,16 @@ param(
 
     [switch]$UseDeviceCode,
 
+    [string]$ResumeManifestPath,
+
     [string]$OutputDirectory = (Join-Path $PSScriptRoot 'artifacts')
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-$ProjectVersion = '0.1.0-beta'
+$ProjectVersion = '0.2.0-beta'
+
+. (Join-Path $PSScriptRoot 'DefenderXdrStorySeeder.Agent365.ps1')
 
 function Install-GraphAuthenticationModule {
     $moduleName = 'Microsoft.Graph.Authentication'
@@ -57,13 +71,24 @@ function Install-GraphAuthenticationModule {
 }
 
 function Connect-BulkSeederGraph {
-    param([Parameter(Mandatory)][string]$LoginHint, [switch]$DeviceCode)
+    param([Parameter(Mandatory)][string]$LoginHint, [switch]$DeviceCode, [switch]$IncludeAgentScopes)
 
     Install-GraphAuthenticationModule
     Import-Module Microsoft.Graph.Authentication -ErrorAction Stop
 
+    $scopes = [System.Collections.Generic.List[string]]::new()
+    @('SecurityAlert.Create.All', 'SecurityIncident.ReadWrite.All', 'User.Read.All') | ForEach-Object { $scopes.Add($_) }
+    if ($IncludeAgentScopes) {
+        @(
+            'AgentIdentityBlueprint.Create'
+            'AgentIdentityBlueprintPrincipal.Create'
+            'AgentIdentity.Create.All'
+            'AgentRegistration.ReadWrite.All'
+        ) | ForEach-Object { $scopes.Add($_) }
+    }
+
     $parameters = @{
-        Scopes       = @('SecurityAlert.Create.All', 'SecurityIncident.ReadWrite.All', 'User.Read.All')
+        Scopes       = @($scopes)
         ContextScope = 'Process'
         LoginHint    = $LoginHint
         NoWelcome    = $true
@@ -268,6 +293,33 @@ function New-AlertEntities {
     return @($entities)
 }
 
+function Add-AiAgentEntities {
+    param(
+        [Parameter(Mandatory)][object[]]$Entities,
+        [Parameter(Mandatory)][System.Collections.IDictionary]$AgentRecord
+    )
+
+    $result = [System.Collections.Generic.List[object]]::new()
+    foreach ($entity in $Entities) {
+        $result.Add($entity)
+    }
+    $result.Add([ordered]@{
+        entityType = 'cloudApplication'
+        entityIdentifier = 'name'
+        identifierValue = [string]$AgentRecord.displayName
+        role = 'impacted'
+    })
+    if (-not [string]::IsNullOrWhiteSpace([string]$AgentRecord.blueprintAppId)) {
+        $result.Add([ordered]@{
+            entityType = 'oAuthApplication'
+            entityIdentifier = 'id'
+            identifierValue = [string]$AgentRecord.blueprintAppId
+            role = 'impacted'
+        })
+    }
+    return @($result)
+}
+
 function Get-StageSeverity {
     param(
         [Parameter(Mandatory)][string]$IncidentSeverity,
@@ -381,18 +433,69 @@ function Get-AttackStages {
     return @($stages | Select-Object -First $AlertCount)
 }
 
+function Get-AiAttackStages {
+    param(
+        [Parameter(Mandatory)][System.Collections.IDictionary]$Attack,
+        [Parameter(Mandatory)][int]$AlertCount
+    )
+
+    $stages = @(
+        [ordered]@{ title = [string]$Attack.title; description = [string]$Attack.description; category = [string]$Attack.category; techniques = @($Attack.mitreTechniques); recommendedActions = [string]$Attack.recommendedActions },
+        [ordered]@{ title = 'AI agent identity observed in unexpected context'; description = '{{AgentName}} was represented outside its expected dormant demo context. Blueprint {{BlueprintId}}; agent identity {{AgentIdentityId}}.'; category = 'InitialAccess'; techniques = @('T1078'); recommendedActions = 'Review the agent identity, sponsor, owner, and registry record.' },
+        [ordered]@{ title = 'AI agent delegated access boundary exceeded'; description = '{{AgentName}} was associated with access beyond the {{AuthorityProfile}} authority profile.'; category = 'PrivilegeEscalation'; techniques = @('T1068'); recommendedActions = 'Review declared permissions and remove unnecessary consent.' },
+        [ordered]@{ title = 'AI agent queried sensitive data source'; description = '{{AgentName}} was associated with a sensitive data query involving {{UserPrincipalName}}.'; category = 'Collection'; techniques = @('T1213'); recommendedActions = 'Validate the data source and least-privilege boundary.' },
+        [ordered]@{ title = 'AI agent accessed untrusted external content'; description = '{{AgentName}} was associated with an untrusted external URL from {{DeviceName}}.'; category = 'CommandAndControl'; techniques = @('T1105'); recommendedActions = 'Review outbound destinations and content controls.' },
+        [ordered]@{ title = 'AI agent permission use anomaly detected'; description = '{{AgentName}} was associated with unusual use of its declared {{ExecutionMode}} permissions.'; category = 'CredentialAccess'; techniques = @('T1550'); recommendedActions = 'Review permission use and sign-in evidence for the agent identity.' },
+        [ordered]@{ title = 'AI agent enumerated tenant resources'; description = '{{AgentName}} was associated with resource discovery beyond its expected task.'; category = 'Discovery'; techniques = @('T1087.004'); recommendedActions = 'Constrain discovery permissions and inspect queried resources.' },
+        [ordered]@{ title = 'AI agent collected cross-context information'; description = '{{AgentName}} was associated with data collection across unrelated contexts.'; category = 'Collection'; techniques = @('T1114', 'T1213'); recommendedActions = 'Review data boundaries and sponsor-approved use cases.' },
+        [ordered]@{ title = 'AI agent staged generated output'; description = '{{AgentName}} was associated with staging output before transfer.'; category = 'Collection'; techniques = @('T1074'); recommendedActions = 'Inspect staged content and retention controls.' },
+        [ordered]@{ title = 'AI agent contacted external service'; description = '{{AgentName}} was associated with a repeated external service connection.'; category = 'CommandAndControl'; techniques = @('T1071.001'); recommendedActions = 'Validate the destination and block unapproved connectors.' },
+        [ordered]@{ title = 'AI agent transferred collected content'; description = '{{AgentName}} was associated with transferring staged content to an external destination.'; category = 'Exfiltration'; techniques = @('T1041'); recommendedActions = 'Determine the content scope and revoke unauthorized access.' },
+        [ordered]@{ title = 'AI agent governance response recommended'; description = 'Review {{AgentName}}, blueprint {{BlueprintId}}, identity {{AgentIdentityId}}, and registry record {{RegistrationId}} as one governed object set.'; category = 'Impact'; techniques = @('T1531'); recommendedActions = 'Disable or remove the demo identity set if it is no longer required.' }
+    )
+    return @($stages | Select-Object -First $AlertCount)
+}
+
+function Expand-StoryText {
+    param(
+        [AllowEmptyString()][string]$Text,
+        [Parameter(Mandatory)][string]$DeviceName,
+        [Parameter(Mandatory)][string]$UserPrincipalName,
+        [AllowNull()][System.Collections.IDictionary]$AgentRecord
+    )
+
+    $expanded = $Text.Replace('{{DeviceName}}', $DeviceName).Replace('{{UserPrincipalName}}', $UserPrincipalName)
+    if ($null -ne $AgentRecord) {
+        $values = [ordered]@{
+            '{{AgentName}}' = [string]$AgentRecord.displayName
+            '{{AuthorityProfile}}' = [string]$AgentRecord.authorityProfile
+            '{{ExecutionMode}}' = [string]$AgentRecord.executionMode
+            '{{BlueprintId}}' = if ([string]::IsNullOrWhiteSpace([string]$AgentRecord.blueprintId)) { 'unavailable' } else { [string]$AgentRecord.blueprintId }
+            '{{AgentIdentityId}}' = if ([string]::IsNullOrWhiteSpace([string]$AgentRecord.agentIdentityId)) { 'unavailable' } else { [string]$AgentRecord.agentIdentityId }
+            '{{RegistrationId}}' = if ([string]::IsNullOrWhiteSpace([string]$AgentRecord.agentRegistrationId)) { 'unavailable' } else { [string]$AgentRecord.agentRegistrationId }
+        }
+        foreach ($placeholder in $values.Keys) {
+            $expanded = $expanded.Replace($placeholder, [string]$values[$placeholder])
+        }
+    }
+    return $expanded
+}
+
 function Save-RunManifest {
     param([Parameter(Mandatory)][System.Collections.IDictionary]$Manifest, [Parameter(Mandatory)][string]$Path)
     $Manifest | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $Path -Encoding utf8
 }
 
 $resolvedCatalogPath = (Resolve-Path -LiteralPath $CatalogPath).Path
+$resolvedAiAgentCatalogPath = (Resolve-Path -LiteralPath $AiAgentCatalogPath).Path
 $resolvedEndpointRosterPath = (Resolve-Path -LiteralPath $EndpointRosterPath).Path
 $resolvedMailboxRosterPath = (Resolve-Path -LiteralPath $MailboxRosterPath).Path
 $catalog = Get-Content -LiteralPath $resolvedCatalogPath -Raw | ConvertFrom-Json -AsHashtable
+$aiAgentCatalog = Get-Content -LiteralPath $resolvedAiAgentCatalogPath -Raw | ConvertFrom-Json -AsHashtable
 $endpointRoster = Get-Content -LiteralPath $resolvedEndpointRosterPath -Raw | ConvertFrom-Json -AsHashtable
 $mailboxRoster = Get-Content -LiteralPath $resolvedMailboxRosterPath -Raw | ConvertFrom-Json -AsHashtable
 $allAttacks = @($catalog.attacks)
+$allAgentDefinitions = @($aiAgentCatalog.agents)
 $random = [System.Random]::new($RandomSeed)
 $allEndpoints = @(Get-ShuffledItems -Items @($endpointRoster.endpoints) -Random $random)
 $allMailboxAliases = @($mailboxRoster.mailboxes)
@@ -406,11 +509,45 @@ if ($allEndpoints.Count -lt 1) {
 if ($allMailboxAliases.Count -lt 1) {
     throw 'The mailbox roster is empty.'
 }
-if (($StartAt - 1 + $IncidentCount) -gt $allAttacks.Count) {
-    throw "StartAt $StartAt with IncidentCount $IncidentCount exceeds the $($allAttacks.Count)-entry catalog."
+if ($AiIncidentCount -gt $IncidentCount) {
+    throw 'AiIncidentCount cannot exceed IncidentCount.'
+}
+if ($CreateDemoAiAgents -and $DemoAgentCount -lt 1) {
+    throw 'DemoAgentCount must be at least 1 when CreateDemoAiAgents is enabled.'
+}
+if ($AiIncidentCount -gt 0 -and $allAgentDefinitions.Count -lt 1) {
+    throw 'The AI-agent catalog is empty.'
 }
 
-$selectedAttacks = @($allAttacks | Select-Object -Skip ($StartAt - 1) -First $IncidentCount)
+$traditionalIncidentCount = $IncidentCount - $AiIncidentCount
+if (($StartAt - 1 + $traditionalIncidentCount) -gt $allAttacks.Count) {
+    throw "StartAt $StartAt with $traditionalIncidentCount traditional incident(s) exceeds the $($allAttacks.Count)-entry catalog."
+}
+
+$selectedAttacks = [System.Collections.Generic.List[object]]::new()
+foreach ($attack in @($allAttacks | Select-Object -Skip ($StartAt - 1) -First $traditionalIncidentCount)) {
+    $attack['isAiScenario'] = $false
+    $attack['aiDefinitionIndex'] = $null
+    $selectedAttacks.Add($attack)
+}
+for ($aiOffset = 0; $aiOffset -lt $AiIncidentCount; $aiOffset++) {
+    $definitionIndex = $aiOffset % $allAgentDefinitions.Count
+    $definition = $allAgentDefinitions[$definitionIndex]
+    $selectedAttacks.Add([ordered]@{
+        id = 1000 + $aiOffset + 1
+        title = [string]$definition.title
+        workload = 'SecurityForAI'
+        category = [string]$definition.category
+        severity = [string]$definition.severity
+        mitreTechniques = @($definition.mitreTechniques)
+        description = "Manual Defender XDR proxy story for {{AgentName}}. $([string]$definition.summary) Blueprint={{BlueprintId}}; AgentIdentity={{AgentIdentityId}}; Registry={{RegistrationId}}."
+        summary = [string]$definition.summary
+        recommendedActions = [string]$definition.recommendedActions
+        isAiScenario = $true
+        aiDefinitionIndex = $definitionIndex
+    })
+}
+
 $plan = for ($offset = 0; $offset -lt $selectedAttacks.Count; $offset++) {
     $catalogIndex = $StartAt + $offset
     $attack = $selectedAttacks[$offset]
@@ -422,7 +559,8 @@ $plan = for ($offset = 0; $offset -lt $selectedAttacks.Count; $offset++) {
         Category = [string]$attack.category
         Workload = [string]$attack.workload
         Endpoint = [string]$endpoint.name
-        Identity = 'Selected from tenant at run time'
+        Identity = if ([bool]$attack.isAiScenario) { 'Tenant identity plus demo AI agent' } else { 'Selected from tenant at run time' }
+        AssociationMode = if ([bool]$attack.isAiScenario) { 'manualProxy' } else { 'manualStory' }
         Alerts   = 10 + (($catalogIndex - 1) % 3)
     }
 }
@@ -434,6 +572,8 @@ if (-not $Execute) {
         Mode          = 'DryRun'
         Version       = $ProjectVersion
         IncidentCount = $selectedAttacks.Count
+        DemoAgentCount = if ($CreateDemoAiAgents) { $DemoAgentCount } else { 0 }
+        AiIncidentCount = $AiIncidentCount
         StartAt       = $StartAt
         Plan          = $plan
     }
@@ -441,7 +581,11 @@ if (-not $Execute) {
 
 $totalAlertCount = ($plan | Measure-Object -Property Alerts -Sum).Sum
 $target = "Microsoft Defender tenant selected by $GlobalAdminUpn"
-if (-not $PSCmdlet.ShouldProcess($target, "Create $($selectedAttacks.Count) incidents containing $totalAlertCount alerts and impacted endpoint assets")) {
+$confirmationAction = "Create $($selectedAttacks.Count) incidents containing exactly $totalAlertCount alerts"
+if ($CreateDemoAiAgents) {
+    $confirmationAction += ", plus $DemoAgentCount dormant demo AI agents; $AiIncidentCount incident(s) will use manual AI proxy stories"
+}
+if (-not $PSCmdlet.ShouldProcess($target, $confirmationAction)) {
     return
 }
 
@@ -450,33 +594,63 @@ if (-not (Test-Path -LiteralPath $OutputDirectory)) {
 }
 $runId = [DateTime]::UtcNow.ToString('yyyyMMdd-HHmmss')
 $manifestPath = Join-Path $OutputDirectory "bulk-seed-run-$runId.json"
-$manifest = [ordered]@{
-    schemaVersion     = 1
-    projectVersion    = $ProjectVersion
-    runId             = $runId
-    startedAtUtc      = [DateTime]::UtcNow.ToString('o')
-    completedAtUtc    = $null
-    succeeded         = $false
-    tenantId          = $null
-    signedInAccount   = $null
-    globalAdminUpn    = $GlobalAdminUpn
-    randomSeed        = $RandomSeed
-    requestedCount    = $IncidentCount
-    requestedAlertCount = $totalAlertCount
-    startAt           = $StartAt
-    completedCount    = 0
-    completedAlertCount = 0
-    discoveredIdentityCount = 0
-    discoveredMailboxCount = 0
-    incidents         = @()
-    error             = $null
+if (-not [string]::IsNullOrWhiteSpace($ResumeManifestPath)) {
+    $manifestPath = (Resolve-Path -LiteralPath $ResumeManifestPath).Path
+    $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json -AsHashtable
+    if ([string]$manifest.projectVersion -ne $ProjectVersion) {
+        throw "Resume manifest version '$($manifest.projectVersion)' does not match $ProjectVersion."
+    }
+    if ([int]$manifest.requestedCount -ne $IncidentCount) {
+        throw "Resume manifest requested $($manifest.requestedCount) incidents. Re-run with -IncidentCount $($manifest.requestedCount)."
+    }
+    $runId = [string]$manifest.runId
+    $manifest.succeeded = $false
+    $manifest.error = $null
+    $manifest.completedAtUtc = $null
+    $manifest.resumptionCount = 1 + [int]$manifest.resumptionCount
+    $manifest.resumedAtUtc = [DateTime]::UtcNow.ToString('o')
+}
+else {
+    $manifest = [ordered]@{
+        schemaVersion     = 2
+        projectVersion    = $ProjectVersion
+        runId             = $runId
+        startedAtUtc      = [DateTime]::UtcNow.ToString('o')
+        resumedAtUtc      = $null
+        resumptionCount   = 0
+        completedAtUtc    = $null
+        succeeded         = $false
+        tenantId          = $null
+        signedInAccount   = $null
+        globalAdminUpn    = $GlobalAdminUpn
+        randomSeed        = $RandomSeed
+        requestedCount    = $IncidentCount
+        requestedAlertCount = $totalAlertCount
+        requestedDemoAgentCount = if ($CreateDemoAiAgents) { $DemoAgentCount } else { 0 }
+        requestedAiIncidentCount = $AiIncidentCount
+        startAt           = $StartAt
+        completedCount    = 0
+        completedAlertCount = 0
+        discoveredIdentityCount = 0
+        discoveredMailboxCount = 0
+        capabilities      = [ordered]@{
+            agent365License = 'notDirectlyVerified'
+            entraAgentId = if ($CreateDemoAiAgents) { 'pending' } else { 'notRequested' }
+            agentRegistry = if ($CreateDemoAiAgents) { 'pending' } else { 'notRequested' }
+            defenderSecurityForAi = if ($AiIncidentCount -gt 0) { 'manualProxyOnly' } else { 'notRequested' }
+        }
+        agents            = @()
+        incidents         = @()
+        resume            = [ordered]@{ nextPlanOffset = 0; remainingIncidentCount = $IncidentCount }
+        error             = $null
+    }
 }
 Save-RunManifest -Manifest $manifest -Path $manifestPath
 
 $context = $null
 $executionError = $null
 try {
-    $context = Connect-BulkSeederGraph -LoginHint $GlobalAdminUpn -DeviceCode:$UseDeviceCode
+    $context = Connect-BulkSeederGraph -LoginHint $GlobalAdminUpn -DeviceCode:$UseDeviceCode -IncludeAgentScopes:$CreateDemoAiAgents
     $manifest.tenantId = [string]$context.TenantId
     $manifest.signedInAccount = [string]$context.Account
 
@@ -488,6 +662,31 @@ try {
             userPrincipalName = $GlobalAdminUpn
             mail = $GlobalAdminUpn
         })
+    }
+
+    $ownerIdentity = @($tenantIdentities | Where-Object { [string]$_.userPrincipalName -ieq $GlobalAdminUpn } | Select-Object -First 1)
+    if ($CreateDemoAiAgents -and ($ownerIdentity.Count -eq 0 -or [string]::IsNullOrWhiteSpace([string]$ownerIdentity[0].id))) {
+        throw "The signed-in owner '$GlobalAdminUpn' could not be resolved to a tenant user object."
+    }
+
+    if ($CreateDemoAiAgents -and @($manifest.agents).Count -eq 0) {
+        Write-Host "Creating up to $DemoAgentCount dormant demo AI agent identity set(s)..." -ForegroundColor Cyan
+        for ($agentOffset = 0; $agentOffset -lt $DemoAgentCount; $agentOffset++) {
+            $definition = $allAgentDefinitions[$agentOffset % $allAgentDefinitions.Count]
+            $agentRecord = New-DemoAiAgent `
+                -Definition $definition `
+                -OwnerId ([string]$ownerIdentity[0].id) `
+                -RunId $runId `
+                -Sequence ($agentOffset + 1)
+            $manifest.agents = @($manifest.agents) + $agentRecord
+            Save-RunManifest -Manifest $manifest -Path $manifestPath
+            if ([string]$agentRecord.creationStatus -ne 'created') {
+                Write-Warning "Agent '$($agentRecord.displayName)' was created only partially. AI incidents will still use a truthful manual proxy association."
+            }
+        }
+        $manifest.capabilities.entraAgentId = if (@($manifest.agents | Where-Object { $_.componentStatus.blueprint -eq 'created' }).Count -gt 0) { 'available' } else { 'unavailable' }
+        $manifest.capabilities.agentRegistry = if (@($manifest.agents | Where-Object { $_.componentStatus.agentRegistration -eq 'created' }).Count -gt 0) { 'available' } else { 'unavailable' }
+        Save-RunManifest -Manifest $manifest -Path $manifestPath
     }
 
     $nonAdminIdentities = @($tenantIdentities | Where-Object { $_.userPrincipalName -ne $GlobalAdminUpn })
@@ -511,13 +710,45 @@ try {
     )
     $fictionalMailboxes = @(Get-ShuffledItems -Items $fictionalMailboxes -Random $random)
 
+    $agentPool = @($manifest.agents)
+    if ($agentPool.Count -eq 0 -and $AiIncidentCount -gt 0) {
+        $agentPool = @(
+            for ($agentIndex = 0; $agentIndex -lt [math]::Max(1, [math]::Min($AiIncidentCount, $allAgentDefinitions.Count)); $agentIndex++) {
+                $definition = $allAgentDefinitions[$agentIndex % $allAgentDefinitions.Count]
+                [ordered]@{
+                    sequence = $agentIndex + 1
+                    catalogId = [int]$definition.id
+                    displayName = [string]$definition.name
+                    description = [string]$definition.description
+                    authorityProfile = [string]$definition.authorityProfile
+                    executionMode = [string]$definition.executionMode
+                    declaredPermissions = @($definition.permissions)
+                    credentialsCreated = $false
+                    permissionGrantsCreated = @()
+                    blueprintId = $null
+                    blueprintAppId = $null
+                    blueprintPrincipalId = $null
+                    agentIdentityId = $null
+                    agentIdentityAppId = $null
+                    agentRegistrationId = $null
+                    creationStatus = 'proxyOnly'
+                    componentStatus = [ordered]@{ blueprint = 'notRequested'; blueprintPrincipal = 'notRequested'; agentIdentity = 'notRequested'; agentRegistration = 'notRequested' }
+                    errors = @()
+                }
+            }
+        )
+    }
+
     $manifest.discoveredIdentityCount = $identityPool.Count
     $manifest.discoveredMailboxCount = $mailIdentityPool.Count
     Save-RunManifest -Manifest $manifest -Path $manifestPath
 
-    for ($offset = 0; $offset -lt $selectedAttacks.Count; $offset++) {
+    $resumeOffset = [int]$manifest.completedCount
+    for ($offset = $resumeOffset; $offset -lt $selectedAttacks.Count; $offset++) {
         $catalogIndex = $StartAt + $offset
         $attack = $selectedAttacks[$offset]
+        $isAiScenario = [bool]$attack.isAiScenario
+        $agentRecord = if ($isAiScenario) { $agentPool[($offset - $traditionalIncidentCount) % $agentPool.Count] } else { $null }
         $endpoint = $allEndpoints[($catalogIndex - 1) % $allEndpoints.Count]
         if ([string]$attack.workload -eq 'Email') {
             $identity = $mailIdentityPool[($catalogIndex - 1) % $mailIdentityPool.Count]
@@ -533,7 +764,12 @@ try {
         $fictionalMailbox = $fictionalMailboxes[($catalogIndex - 1) % $fictionalMailboxes.Count]
         $fictionalMailboxAddress = [string]$fictionalMailbox.address
         $alertCount = 10 + (($catalogIndex - 1) % 3)
-        $stages = Get-AttackStages -Attack $attack -AlertCount $alertCount
+        $stages = if ($isAiScenario) {
+            Get-AiAttackStages -Attack $attack -AlertCount $alertCount
+        }
+        else {
+            Get-AttackStages -Attack $attack -AlertCount $alertCount
+        }
         $incidentId = $null
         $incidentRecord = [ordered]@{
             catalogNumber  = $catalogIndex
@@ -547,6 +783,7 @@ try {
             impactedMailbox = $impactedMailboxAddress
             fictionalMailbox = $fictionalMailboxAddress
             scenarioContext = switch ([string]$attack.workload) {
+                'SecurityForAI' { 'Security for AI manual proxy' }
                 'Email' { 'Defender for Office 365' }
                 'Identity' { 'Defender for Identity' }
                 'CloudApp' { 'Defender for Cloud Apps' }
@@ -554,6 +791,21 @@ try {
                 'Endpoint' { 'Defender for Endpoint' }
                 default { 'Microsoft Defender XDR' }
             }
+            associationMode = if ($isAiScenario) { 'manualProxy' } else { 'manualStory' }
+            agentAssetLinked = $false
+            agent = if ($isAiScenario) {
+                [ordered]@{
+                    displayName = [string]$agentRecord.displayName
+                    authorityProfile = [string]$agentRecord.authorityProfile
+                    executionMode = [string]$agentRecord.executionMode
+                    blueprintId = [string]$agentRecord.blueprintId
+                    blueprintAppId = [string]$agentRecord.blueprintAppId
+                    blueprintPrincipalId = [string]$agentRecord.blueprintPrincipalId
+                    agentIdentityId = [string]$agentRecord.agentIdentityId
+                    agentRegistrationId = [string]$agentRecord.agentRegistrationId
+                    creationStatus = [string]$agentRecord.creationStatus
+                }
+            } else { $null }
             status         = 'creating'
             alerts         = @()
         }
@@ -571,10 +823,13 @@ try {
                 -FictionalMailboxAddress $fictionalMailboxAddress `
                 -Index $catalogIndex `
                 -StageNumber $stageNumber
+            if ($isAiScenario) {
+                $entities = Add-AiAgentEntities -Entities $entities -AgentRecord $agentRecord
+            }
             $alertBody = [ordered]@{
                 '@odata.type'             = '#microsoft.graph.security.manualAlert'
                 title                     = [string]$stage.title
-                description               = ([string]$stage.description).Replace('{{DeviceName}}', [string]$endpoint.name).Replace('{{UserPrincipalName}}', $impactedUserPrincipalName)
+                description               = Expand-StoryText -Text ([string]$stage.description) -DeviceName ([string]$endpoint.name) -UserPrincipalName $impactedUserPrincipalName -AgentRecord $agentRecord
                 category                  = [string]$stage.category
                 severity                  = Get-StageSeverity -IncidentSeverity ([string]$attack.severity) -StageNumber $stageNumber
                 recommendedActions        = [string]$stage.recommendedActions
@@ -625,8 +880,8 @@ try {
         $resolved = (($catalogIndex % 5) -eq 0)
         $incidentBody = [ordered]@{
             displayName    = [string]$attack.title
-            description    = ([string]$attack.description).Replace('{{DeviceName}}', [string]$endpoint.name).Replace('{{UserPrincipalName}}', $impactedUserPrincipalName)
-            summary        = [string]$attack.summary
+            description    = Expand-StoryText -Text ([string]$attack.description) -DeviceName ([string]$endpoint.name) -UserPrincipalName $impactedUserPrincipalName -AgentRecord $agentRecord
+            summary        = if ($isAiScenario) { "Manual proxy only; no native AI detection or agent-asset linkage is claimed. $([string]$attack.summary)" } else { [string]$attack.summary }
             severity       = ([string]$attack.severity).ToLowerInvariant()
             classification = 'informationalExpectedActivity'
             determination  = 'securityTesting'
@@ -640,6 +895,8 @@ try {
         $incidentRecord.incidentWebUrl = [string]$updatedIncident.incidentWebUrl
         $incidentRecord.status = if ($resolved) { 'resolved' } else { 'active' }
         $manifest.completedCount++
+        $manifest.resume.nextPlanOffset = $manifest.completedCount
+        $manifest.resume.remainingIncidentCount = $IncidentCount - $manifest.completedCount
         Save-RunManifest -Manifest $manifest -Path $manifestPath
 
         if ($offset -lt ($selectedAttacks.Count - 1)) {
@@ -664,9 +921,8 @@ finally {
 }
 
 if ($null -ne $executionError) {
-    $nextStart = $StartAt + $manifest.completedCount
     $remainingCount = $IncidentCount - $manifest.completedCount
-    Write-Warning "Bulk seeding stopped after $($manifest.completedCount) complete incident(s) and $($manifest.completedAlertCount) alert(s). Review the partial incident in the manifest before resuming with -StartAt $nextStart -IncidentCount $remainingCount. Manifest: $manifestPath"
+    Write-Warning "Bulk seeding stopped after $($manifest.completedCount) complete incident(s) and $($manifest.completedAlertCount) alert(s). Review any partial incident, then resume with the same inputs plus -ResumeManifestPath '$manifestPath'. Remaining incidents: $remainingCount."
     throw $executionError
 }
 
@@ -678,6 +934,8 @@ Write-Host "Run manifest: $manifestPath"
     Version        = $ProjectVersion
     IncidentCount  = $manifest.completedCount
     AlertCount     = $manifest.completedAlertCount
+    AgentCount     = @($manifest.agents).Count
+    AiIncidentCount = $AiIncidentCount
     FirstIncident  = if ($manifest.completedCount) { $manifest.incidents[0].incidentWebUrl } else { $null }
     ManifestPath   = $manifestPath
 }

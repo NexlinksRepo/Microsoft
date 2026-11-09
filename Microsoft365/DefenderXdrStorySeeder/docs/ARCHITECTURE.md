@@ -6,11 +6,13 @@
 | --- | --- |
 | `Start-DefenderBulkSeed.ps1` | Minimal executing launcher that requires only a UPN. |
 | `Invoke-DefenderBulkSeeder.ps1` | Planning, authentication, identity discovery, alert creation, incident updates, retries, and manifests. |
+| `DefenderXdrStorySeeder.Agent365.ps1` | Dormant blueprint, principal, child identity, and registry-card creation. |
 | `Start-DefenderBulkCleanup.ps1` | Minimal executing cleanup launcher. |
 | `Invoke-DefenderBulkCleanup.ps1` | Active-alert discovery, safe selection, resolution, incident protection, and cleanup manifests. |
 | `catalog/attack-catalog.json` | Fifty primary incident stories and their first alert. |
 | `catalog/endpoint-roster.json` | Sixty fictional endpoint identities. |
 | `catalog/mailbox-roster.json` | Thirty fictional mailbox aliases. |
+| `catalog/ai-agent-catalog.json` | Ten AI profiles and manual proxy story definitions. |
 
 ## Seeder flow
 
@@ -24,6 +26,10 @@ Build deterministic plan ----> preview and stop when -Execute is absent
 Delegated Graph sign-in (UPN login hint)
        |
        +----> GET /v1.0/users (enabled member identities)
+       |
+       +----> optional Agent ID blueprint/principal/identity POSTs
+       |
+       +----> optional POST /beta/copilot/agentRegistrations
        |
        v
 POST /beta/security/alerts_v2 (first manual alert)
@@ -47,6 +53,10 @@ The initial POST is not retried automatically. A network failure can hide a succ
 creation from the client; retrying an unconfirmed POST would risk a duplicate incident. GET and PATCH
 requests use bounded exponential retries.
 
+Agent and registry POSTs are also not retried. Their results are persisted after every requested
+agent. Unsupported components fall back independently to a manual proxy record, allowing the
+incident plan to finish without claiming a native asset association.
+
 ## Determinism
 
 The release catalog is ordered from 1 through 50. Incident `n` receives:
@@ -58,6 +68,10 @@ The release catalog is ordered from 1 through 50. Incident `n` receives:
 
 For catalog items 1–50, the distribution is 17 incidents with 10 alerts, 17 with 11 alerts, and 16
 with 12 alerts, totaling 549.
+
+AI incidents replace the final `AiIncidentCount` slots in the selected plan. They do not increase
+the incident total. Therefore the default mixed plan still contains exactly 50 incidents and 549
+alerts.
 
 Changing `RandomSeed` changes the shuffle but not the number or titles of incidents and alerts.
 
@@ -85,6 +99,10 @@ look appropriate for email, identity, endpoint, cloud-application, Azure-resourc
 stories. The API, however, creates `manualAlert` objects. Defender sets the detection and service
 source. The project does not attempt to spoof a first-party detection product.
 
+AI proxy stories follow the same rule. Supported cloud-application and OAuth-application evidence
+can reference a generated agent's IDs, but the manifest explicitly records `manualProxy` and
+`agentAssetLinked: false`. See [Agent 365 and Security for AI behavior](AGENT365.md).
+
 ## Cleanup flow
 
 ```text
@@ -103,6 +121,10 @@ PATCH matched alerts to resolved / expected security testing
        |
        v
 PATCH only safe, fully successful incidents to resolved
+       |
+       +----> DELETE recorded Agent 365 registrations
+       |
+       +----> soft-delete recorded blueprints (Microsoft cascade cleanup)
        |
        v
 Persist artifacts/cleanup-run-*.json after every operation

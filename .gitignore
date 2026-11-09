@@ -13,6 +13,7 @@
 !Microsoft365/DefenderXdrStorySeeder/catalog/attack-catalog.json
 !Microsoft365/DefenderXdrStorySeeder/catalog/endpoint-roster.json
 !Microsoft365/DefenderXdrStorySeeder/catalog/mailbox-roster.json
+!Microsoft365/DefenderXdrStorySeeder/catalog/ai-agent-catalog.json
 
 # Tenant-specific configuration, credentials and generated review artifacts.
 **/config.json

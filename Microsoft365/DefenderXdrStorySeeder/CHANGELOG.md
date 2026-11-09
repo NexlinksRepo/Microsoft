@@ -3,6 +3,34 @@
 All notable changes to Defender XDR Story Seeder are documented here. Versions follow Semantic
 Versioning. Tags use the repository convention `defender-xdr-story-seeder/v<version>`.
 
+## 0.2.0-beta — 2026-11-09
+
+- Add interactive incident, agent, and AI-proxy counts with Enter-to-accept defaults and an exact
+  final confirmation; `-IncidentCount` remains available for automation.
+- Preserve the fixed 10/11/12 alert cadence and the default 50-incident, 549-alert contract in mixed
+  traditional and AI-proxy runs.
+- Add optional direct Microsoft Graph creation of dormant agent identity blueprints, blueprint
+  principals, child agent identities, and Agent 365 registry cards.
+- Add low, medium, and elevated declared authority profiles without creating credentials, consent
+  grants, runtime workloads, or dangerous administrative access.
+- Add ten Security for AI manual proxy stories that include generated agent IDs while explicitly
+  recording `manualProxy` and `agentAssetLinked: false`.
+- Continue incident creation when an agent capability, license, role, consent, or rollout dependency
+  is unavailable; persist per-component capability results and errors.
+- Expand incremental manifests with agent objects, capability state, requested totals, and resumable
+  plan offsets.
+- Extend cleanup to recognize AI alert titles, delete only registry and blueprint IDs recorded by
+  this package, and rely on Microsoft's documented blueprint cascade cleanup for child objects.
+- Add Agent 365 architecture, limitations, permission-profile, cleanup, and recovery documentation.
+
+### Known beta constraints
+
+- Agent Registration and manual alert creation use Microsoft Graph beta endpoints.
+- Dormant agents might not receive a Microsoft-calculated risk rating or appear in every Agent 365
+  or Security for AI experience.
+- Manual AI proxy incidents are not native Security for AI detections and do not create a native
+  agent asset relationship.
+
 ## 0.1.0-beta — 2026-11-06
 
 - Add a deterministic 50-incident catalog containing 549 total alerts.

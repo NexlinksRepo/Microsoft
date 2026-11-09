@@ -3,7 +3,7 @@
 ## Attack catalog
 
 `catalog/attack-catalog.json` contains an `attacks` array with exactly 50 objects for version
-`0.1.0-beta`.
+`0.2.0-beta`.
 
 Each attack defines:
 
@@ -54,6 +54,17 @@ Depending on workload and stage, alerts can include:
 
 Entity definitions are evidence only. They do not create the referenced Microsoft 365 or Azure
 resource.
+
+## AI-agent catalog
+
+`ai-agent-catalog.json` contains ten profiles. Each defines a dormant agent name, purpose, authority
+profile, execution mode, declared permissions, and a manual AI proxy story. AI stages can also use
+`{{AgentName}}`, `{{AuthorityProfile}}`, `{{ExecutionMode}}`, `{{BlueprintId}}`,
+`{{AgentIdentityId}}`, and `{{RegistrationId}}` tokens.
+
+An AI scenario adds supported `cloudApplication` evidence and, when creation succeeded,
+`oAuthApplication` evidence containing the blueprint application ID. These are references only. The
+manifest remains authoritative that `agentAssetLinked` is false.
 
 ## Endpoint roster
 
