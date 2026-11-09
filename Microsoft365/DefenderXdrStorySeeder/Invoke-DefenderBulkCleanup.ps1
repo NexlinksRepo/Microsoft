@@ -30,7 +30,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-$ProjectVersion = '0.2.2-beta'
+$ProjectVersion = '0.2.3-beta'
 
 function Install-GraphAuthenticationModule {
     $moduleName = 'Microsoft.Graph.Authentication'
@@ -563,4 +563,5 @@ if ($null -ne $manifest) {
         ManifestPath            = $manifestPath
     }
 }
+
 

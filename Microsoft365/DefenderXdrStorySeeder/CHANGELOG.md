@@ -3,6 +3,12 @@
 All notable changes to Defender XDR Story Seeder are documented here. Versions follow Semantic
 Versioning. Tags use the repository convention `defender-xdr-story-seeder/v<version>`.
 
+## 0.2.3-beta — 2026-11-09
+
+- Treat the optional `@odata.nextLink` property as absent on the final Agent ID blueprint page.
+- Fix agent-only cleanup failing under StrictMode when blueprint discovery fits on one page.
+- Preserve the exact `[DXR Demo]` prefix boundary and the existing alert/incident isolation.
+
 ## 0.2.2-beta — 2026-11-09
 
 - Add a dedicated agent-only cleanup launcher that leaves Defender alerts and incidents untouched.
@@ -84,4 +90,5 @@ Versioning. Tags use the repository convention `defender-xdr-story-seeder/v<vers
 - Cleanup resolves records but cannot delete them from Defender history.
 - Fictional device evidence does not populate the global Defender device inventory.
 - Microsoft-controlled service and detection source fields cannot be overridden.
+
 

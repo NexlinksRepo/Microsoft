@@ -178,9 +178,39 @@ Assert-Condition -Condition ($agentCleanupText.Contains("-Filter 'bulk-seed-run-
 Assert-Condition -Condition ($agentCleanupText.Contains("[string]`$NamePrefix = '[DXR Demo]'")) -Message 'Agent-only cleanup defaults to the exact DXR Demo prefix'
 Assert-Condition -Condition ($agentCleanupText.Contains('microsoft.graph.agentIdentityBlueprint?$select=id,appId,displayName')) -Message 'Agent-only cleanup lists only Agent ID blueprints for prefix discovery'
 Assert-Condition -Condition ($agentCleanupText.Contains('StartsWith($Prefix, [System.StringComparison]::OrdinalIgnoreCase)')) -Message 'Agent-only cleanup applies a strict starts-with prefix filter'
+Assert-Condition -Condition ($agentCleanupText.Contains("PSObject.Properties['@odata.nextLink']")) -Message 'Agent-only cleanup treats the Graph next-link property as optional'
 Assert-Condition -Condition ($agentCleanupText.Contains("result = 'alreadyAbsent'")) -Message 'Agent-only cleanup is repeat-safe for absent objects'
 Assert-Condition -Condition (-not $agentCleanupText.Contains('/security/alerts')) -Message 'Agent-only cleanup does not access Defender alerts'
 Assert-Condition -Condition (-not $agentCleanupText.Contains('/security/incidents')) -Message 'Agent-only cleanup does not access Defender incidents'
+
+$agentCleanupTokens = $null
+$agentCleanupParseErrors = $null
+$agentCleanupAst = [System.Management.Automation.Language.Parser]::ParseFile(
+    (Join-Path $projectRoot 'Invoke-DefenderAgentCleanup.ps1'),
+    [ref]$agentCleanupTokens,
+    [ref]$agentCleanupParseErrors
+)
+$blueprintDiscoveryFunction = $agentCleanupAst.Find({
+    param($node)
+    $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+    $node.Name -eq 'Get-PrefixedAgentBlueprintRecords'
+}, $true)
+Invoke-Expression $blueprintDiscoveryFunction.Extent.Text
+function Invoke-MgGraphRequest {
+    [CmdletBinding()]
+    param([string]$Method, [string]$Uri)
+    return [pscustomobject]@{
+        value = @([pscustomobject]@{
+            displayName = '[DXR Demo] Single Page Agent'
+            id = '11111111-1111-1111-1111-111111111111'
+            appId = '22222222-2222-2222-2222-222222222222'
+        })
+    }
+}
+$singlePageDiscovery = @(Get-PrefixedAgentBlueprintRecords -Prefix '[DXR Demo]')
+Assert-Condition -Condition ($singlePageDiscovery.Count -eq 1) -Message 'Single-page blueprint discovery succeeds without @odata.nextLink'
+Remove-Item -LiteralPath Function:\Invoke-MgGraphRequest -Force
+Remove-Item -LiteralPath Function:\Get-PrefixedAgentBlueprintRecords -Force
 
 $dryRun = & (Join-Path $projectRoot 'Invoke-DefenderBulkSeeder.ps1') `
     -GlobalAdminUpn 'offline.test@contoso.example' `
@@ -201,4 +231,5 @@ if ($failures.Count -gt 0) {
 }
 
 Write-Host "All offline checks passed for Defender XDR Story Seeder $version." -ForegroundColor Green
+
 
