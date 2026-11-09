@@ -3,6 +3,19 @@
 All notable changes to Defender XDR Story Seeder are documented here. Versions follow Semantic
 Versioning. Tags use the repository convention `defender-xdr-story-seeder/v<version>`.
 
+## 0.2.1-beta — 2026-11-09
+
+- Remove `managedByAppId` from Agent Registry creation requests when `ownerIds` already satisfies
+  the API requirement; the blueprint was not the interactive calling application and could trigger
+  `403 Forbidden` in enforcing tenants.
+- Add a registration-only retry launcher that consumes an existing 0.2 manifest and never recreates
+  agent identities, incidents, or alerts.
+- Verify `AgentRegistration.ReadWrite.All` is present in the delegated token before retrying.
+- Capture HTTP status, exception message, and the complete Graph error response in manifests.
+- Stop repeated registry calls after the first tenant-wide 401/403 while continuing to create the
+  requested Entra agent identity objects.
+- Add offline coverage and troubleshooting documentation for the observed partial-agent outcome.
+
 ## 0.2.0-beta — 2026-11-09
 
 - Add interactive incident, agent, and AI-proxy counts with Enter-to-accept defaults and an exact

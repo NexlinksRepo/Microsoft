@@ -96,6 +96,18 @@ Agent object deletion is recoverable for the Microsoft retention period because 
 is a soft delete. Defender alert and incident cleanup is different: those records are resolved and
 classified, not erased.
 
+## Registration-only recovery
+
+Version 0.2.1 includes `Start-DefenderAgentRegistrationRetry.ps1` for manifests where Entra objects
+were created but Agent Registry returned an authorization error. It deliberately omits
+`managedByAppId`: `ownerIds` satisfies the API's owner-or-managing-app requirement, while the
+blueprint app ID is not the Microsoft Graph PowerShell client making the interactive request.
+
+The retry operates only on agents that have a blueprint ID and no registration ID. It writes each
+successful registration ID back to the original manifest. A failure stores the status code and full
+Graph response. A persistent 403 after this correction indicates a tenant permission, license, or
+service-rollout gate rather than a need to recreate the agent identities.
+
 ## Microsoft references
 
 - [Create an agent identity blueprint](https://learn.microsoft.com/graph/api/agentidentityblueprint-post?view=graph-rest-1.0)
