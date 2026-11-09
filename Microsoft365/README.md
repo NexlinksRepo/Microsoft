@@ -3,7 +3,7 @@
 | Project | Version | Purpose |
 | --- | --- | --- |
 | [M365 Sign-in Audit Report](M365SignInAuditReport/) | 0.0.1-beta | Collect and analyze interactive-user Microsoft Entra sign-ins, preserve raw evidence, and generate a daily HTML report. |
-| [Defender XDR Story Seeder](DefenderXdrStorySeeder/) | 0.2.3-beta | Create and selectively clean up Defender XDR stories and dormant Agent 365 identities without Sentinel or endpoint infrastructure. |
+| [Defender XDR Story Seeder](DefenderXdrStorySeeder/) | 0.2.4-beta | Create and selectively clean up Defender XDR stories and dormant Agent 365 identities without Sentinel or endpoint infrastructure. |
 
 - [Audit report setup and usage](M365SignInAuditReport/README.md)
 - [Version history](M365SignInAuditReport/CHANGELOG.md)

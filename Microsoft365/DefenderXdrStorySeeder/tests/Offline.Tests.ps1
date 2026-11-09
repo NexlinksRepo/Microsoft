@@ -27,6 +27,7 @@ function Assert-Condition {
 $requiredFiles = @(
     'Start-DefenderBulkSeed.ps1'
     'Invoke-DefenderBulkSeeder.ps1'
+    'DefenderXdrStorySeeder.Authentication.ps1'
     'DefenderXdrStorySeeder.Agent365.ps1'
     'Start-DefenderAgentRegistrationRetry.ps1'
     'Invoke-DefenderAgentRegistrationRetry.ps1'
@@ -57,6 +58,7 @@ foreach ($relativePath in $requiredFiles) {
 $scriptFiles = @(
     'Start-DefenderBulkSeed.ps1'
     'Invoke-DefenderBulkSeeder.ps1'
+    'DefenderXdrStorySeeder.Authentication.ps1'
     'DefenderXdrStorySeeder.Agent365.ps1'
     'Start-DefenderAgentRegistrationRetry.ps1'
     'Invoke-DefenderAgentRegistrationRetry.ps1'
@@ -83,6 +85,7 @@ Assert-Condition -Condition ($version -match '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?
 $seederText = Get-Content -LiteralPath (Join-Path $projectRoot 'Invoke-DefenderBulkSeeder.ps1') -Raw
 $cleanupText = Get-Content -LiteralPath (Join-Path $projectRoot 'Invoke-DefenderBulkCleanup.ps1') -Raw
 $launcherText = Get-Content -LiteralPath (Join-Path $projectRoot 'Start-DefenderBulkSeed.ps1') -Raw
+$authenticationText = Get-Content -LiteralPath (Join-Path $projectRoot 'DefenderXdrStorySeeder.Authentication.ps1') -Raw
 $agentHelperText = Get-Content -LiteralPath (Join-Path $projectRoot 'DefenderXdrStorySeeder.Agent365.ps1') -Raw
 $registrationRetryText = Get-Content -LiteralPath (Join-Path $projectRoot 'Invoke-DefenderAgentRegistrationRetry.ps1') -Raw
 $agentCleanupText = Get-Content -LiteralPath (Join-Path $projectRoot 'Invoke-DefenderAgentCleanup.ps1') -Raw
@@ -144,6 +147,13 @@ Assert-Condition -Condition (@($mailboxes.alias | Sort-Object -Unique).Count -eq
 foreach ($scope in @('SecurityAlert.Create.All', 'SecurityIncident.ReadWrite.All', 'User.Read.All')) {
     Assert-Condition -Condition ($seederText.Contains($scope)) -Message "Seeder requests required scope: $scope"
 }
+Assert-Condition -Condition ($seederText.Contains('SecurityAlert.ReadWrite.All')) -Message 'Seeder requests cleanup alert scope for later session reuse'
+Assert-Condition -Condition ($authenticationText.Contains("ContextScope = 'CurrentUser'")) -Message 'Authentication persists in the secure current-user Graph cache'
+Assert-Condition -Condition ($authenticationText.Contains('Reusing the cached Microsoft Graph sign-in')) -Message 'Authentication reuses a matching cached Graph session'
+Assert-Condition -Condition ($authenticationText.Contains('[string]$context.Account -ine $LoginHint')) -Message 'Authentication rejects a mismatched administrator account'
+foreach ($runtimeText in @($seederText, $cleanupText, $registrationRetryText, $agentCleanupText)) {
+    Assert-Condition -Condition (-not $runtimeText.Contains('Disconnect-MgGraph')) -Message 'Runtime script preserves the cached Graph sign-in'
+}
 foreach ($scope in @('AgentIdentityBlueprint.Create', 'AgentIdentityBlueprintPrincipal.Create', 'AgentIdentity.Create.All', 'AgentRegistration.ReadWrite.All')) {
     Assert-Condition -Condition ($seederText.Contains($scope)) -Message "Seeder requests optional agent scope: $scope"
 }
@@ -175,7 +185,8 @@ foreach ($fragment in @(
     Assert-Condition -Condition ($agentCleanupText.Contains($fragment)) -Message "Agent-only cleanup contains specialized endpoint: $fragment"
 }
 Assert-Condition -Condition ($agentCleanupText.Contains("-Filter 'bulk-seed-run-*.json'")) -Message 'Agent-only cleanup discovers seed manifests'
-Assert-Condition -Condition ($agentCleanupText.Contains("[string]`$NamePrefix = '[DXR Demo]'")) -Message 'Agent-only cleanup defaults to the exact DXR Demo prefix'
+Assert-Condition -Condition ($agentCleanupText.Contains("[string]`$NamePrefix = '[MXDR Demo]'")) -Message 'Agent-only cleanup defaults to the exact MXDR Demo prefix'
+Assert-Condition -Condition ($agentHelperText.Contains('[MXDR Demo]')) -Message 'New agent object names use the MXDR Demo prefix'
 Assert-Condition -Condition ($agentCleanupText.Contains('microsoft.graph.agentIdentityBlueprint?$select=id,appId,displayName')) -Message 'Agent-only cleanup lists only Agent ID blueprints for prefix discovery'
 Assert-Condition -Condition ($agentCleanupText.Contains('StartsWith($Prefix, [System.StringComparison]::OrdinalIgnoreCase)')) -Message 'Agent-only cleanup applies a strict starts-with prefix filter'
 Assert-Condition -Condition ($agentCleanupText.Contains("PSObject.Properties['@odata.nextLink']")) -Message 'Agent-only cleanup treats the Graph next-link property as optional'
@@ -201,13 +212,13 @@ function Invoke-MgGraphRequest {
     param([string]$Method, [string]$Uri)
     return [pscustomobject]@{
         value = @([pscustomobject]@{
-            displayName = '[DXR Demo] Single Page Agent'
+            displayName = '[MXDR Demo] Single Page Agent'
             id = '11111111-1111-1111-1111-111111111111'
             appId = '22222222-2222-2222-2222-222222222222'
         })
     }
 }
-$singlePageDiscovery = @(Get-PrefixedAgentBlueprintRecords -Prefix '[DXR Demo]')
+$singlePageDiscovery = @(Get-PrefixedAgentBlueprintRecords -Prefix '[MXDR Demo]')
 Assert-Condition -Condition ($singlePageDiscovery.Count -eq 1) -Message 'Single-page blueprint discovery succeeds without @odata.nextLink'
 Remove-Item -LiteralPath Function:\Invoke-MgGraphRequest -Force
 Remove-Item -LiteralPath Function:\Get-PrefixedAgentBlueprintRecords -Force
@@ -225,6 +236,17 @@ Assert-Condition -Condition (@($dryRun.Plan).Count -eq 50) -Message 'Mixed defau
 Assert-Condition -Condition ($dryRunAlertCount -eq 549) -Message 'Mixed default plan contains exactly 549 alerts'
 Assert-Condition -Condition (@($dryRun.Plan | Where-Object { $_.AssociationMode -eq 'manualProxy' }).Count -eq 10) -Message 'Mixed plan contains the requested ten AI proxy incidents'
 Assert-Condition -Condition (@($dryRun.Plan | Where-Object { $_.Alerts -lt 10 -or $_.Alerts -gt 12 }).Count -eq 0) -Message 'Every mixed-plan incident contains 10 through 12 alerts'
+
+$cycledAgentDryRun = & (Join-Path $projectRoot 'Invoke-DefenderBulkSeeder.ps1') `
+    -GlobalAdminUpn 'offline.test@contoso.example' `
+    -IncidentCount 8 `
+    -CreateDemoAiAgents `
+    -DemoAgentCount 3 `
+    -AiIncidentCount 8 `
+    -Confirm:$false | Where-Object { $_ -is [psobject] -and $_.PSObject.Properties.Name -contains 'Mode' } | Select-Object -Last 1
+$cycledAgentPlan = @($cycledAgentDryRun.Plan)
+Assert-Condition -Condition ((@($cycledAgentPlan.AgentPoolPosition) -join ',') -eq '1,2,3,1,2,3,1,2') -Message 'AI incidents cycle through a smaller selected agent pool'
+Assert-Condition -Condition ((@($cycledAgentPlan.AgentCatalogId) -join ',') -eq '1,2,3,1,2,3,1,2') -Message 'Cycled AI incidents retain the matching agent story profile'
 
 if ($failures.Count -gt 0) {
     throw "Offline validation failed with $($failures.Count) error(s): $($failures -join '; ')"

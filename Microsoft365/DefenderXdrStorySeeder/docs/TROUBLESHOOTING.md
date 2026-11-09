@@ -32,6 +32,18 @@ taskbar or use device-code authentication:
 pwsh -File .\Start-DefenderBulkSeed.ps1 'global.admin@contoso.com' -UseDeviceCode
 ```
 
+## The script signed in as the wrong administrator
+
+The package will stop before tenant operations if the cached Microsoft Graph account does not match
+the supplied UPN. End the old session, then rerun the launcher:
+
+```powershell
+Disconnect-MgGraph
+```
+
+Seeding and cleanup otherwise reuse the secure current-user Graph cache across separate PowerShell
+processes. Do not run `Disconnect-MgGraph` between them unless you intentionally want to sign out.
+
 ## Consent or authorization failure
 
 Confirm that the account can consent to or has already been granted the delegated permissions in the
@@ -41,7 +53,7 @@ for the write APIs. A role activation delay can require a new sign-in.
 ## `400 Bad Request` while updating an incident
 
 Use the current version. Earlier packages could serialize a one-item `customTags` collection as a
-scalar. Version `0.2.3-beta` does not depend on a synthetic custom tag and sends only supported
+scalar. Version `0.2.4-beta` does not depend on a synthetic custom tag and sends only supported
 incident fields.
 
 ## `404 Not Found` after creating the first alert
@@ -97,7 +109,7 @@ pwsh -File .\Start-DefenderAgentCleanup.ps1 `
 ```
 
 It recursively finds seed manifests, deduplicates their recorded object IDs, and includes only
-additional blueprint names beginning with `[DXR Demo]`. A 404 means cascade cleanup or an earlier
+additional blueprint names beginning with `[MXDR Demo]`. A 404 means cascade cleanup or an earlier
 run already removed that object and is safe to ignore.
 
 ## Cleanup found zero alerts

@@ -6,6 +6,7 @@
 | --- | --- |
 | `Start-DefenderBulkSeed.ps1` | Minimal executing launcher that requires only a UPN. |
 | `Invoke-DefenderBulkSeeder.ps1` | Planning, authentication, identity discovery, alert creation, incident updates, retries, and manifests. |
+| `DefenderXdrStorySeeder.Authentication.ps1` | Current-user Graph session caching, account validation, and delegated-scope validation. |
 | `DefenderXdrStorySeeder.Agent365.ps1` | Dormant blueprint, principal, child identity, and registry-card creation. |
 | `Start-DefenderAgentRegistrationRetry.ps1` | UPN-first launcher for retrying only missing registry cards from a manifest. |
 | `Invoke-DefenderAgentRegistrationRetry.ps1` | Scope validation, registration-only recovery, detailed error capture, and incremental manifest updates. |
@@ -27,7 +28,7 @@ Catalog + rosters
 Build deterministic plan ----> preview and stop when -Execute is absent
        |
        v
-Delegated Graph sign-in (UPN login hint)
+Delegated Graph sign-in or cached-session reuse (verified UPN and scopes)
        |
        +----> GET /v1.0/users (enabled member identities)
        |
@@ -75,7 +76,13 @@ with 12 alerts, totaling 549.
 
 AI incidents replace the final `AiIncidentCount` slots in the selected plan. They do not increase
 the incident total. Therefore the default mixed plan still contains exactly 50 incidents and 549
-alerts.
+alerts. When `AiIncidentCount` exceeds `DemoAgentCount`, incident associations cycle through the
+selected agent pool and each incident uses the story definition belonging to that agent position.
+
+Authentication uses the Microsoft Graph SDK's `CurrentUser` context. A successful delegated sign-in
+is securely cached and can be reused by a later `pwsh -File` seeding, retry, or cleanup process. Each
+script verifies the requested UPN and all required scopes before use. The package deliberately does
+not call `Disconnect-MgGraph`; the operator can run that command to explicitly end the session.
 
 Changing `RandomSeed` changes the shuffle but not the number or titles of incidents and alerts.
 
@@ -138,7 +145,7 @@ The cleanup manifest supports repeatable recovery: a subsequent run selects only
 active. Failures do not cause already completed updates to be reversed.
 
 Agent-only cleanup is a separate path. It reads `bulk-seed-run-*.json` files and supplements them
-with a blueprint list filtered client-side to names beginning exactly with `[DXR Demo]`. It calls
+with a blueprint list filtered client-side to names beginning exactly with `[MXDR Demo]`. It calls
 only the specialized registration, blueprint, child-identity, and blueprint-principal delete
 endpoints and does not read or update Defender alerts or incidents. Blueprint cascade cleanup can
 make later child-object deletes return 404; that result is recorded as `alreadyAbsent` and is

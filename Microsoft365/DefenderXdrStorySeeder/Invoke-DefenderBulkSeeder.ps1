@@ -44,65 +44,34 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-$ProjectVersion = '0.2.3-beta'
+$ProjectVersion = '0.2.4-beta'
 
 . (Join-Path $PSScriptRoot 'DefenderXdrStorySeeder.Agent365.ps1')
-
-function Install-GraphAuthenticationModule {
-    $moduleName = 'Microsoft.Graph.Authentication'
-    if (Get-Module -ListAvailable -Name $moduleName) {
-        return
-    }
-
-    Write-Host "Installing required PowerShell module '$moduleName' for the current user..." -ForegroundColor Cyan
-    if (Get-Command Install-PSResource -ErrorAction SilentlyContinue) {
-        Install-PSResource -Name $moduleName -Repository PSGallery -Scope CurrentUser -TrustRepository -AcceptLicense -Quiet -ErrorAction Stop
-    }
-    elseif (Get-Command Install-Module -ErrorAction SilentlyContinue) {
-        Install-Module -Name $moduleName -Repository PSGallery -Scope CurrentUser -Force -AllowClobber -Confirm:$false -ErrorAction Stop
-    }
-    else {
-        throw "Install PowerShellGet or PSResourceGet, then install '$moduleName'."
-    }
-
-    if (-not (Get-Module -ListAvailable -Name $moduleName)) {
-        throw "'$moduleName' was installed but is not visible in the current module path. Reopen PowerShell and run the launcher again."
-    }
-}
+. (Join-Path $PSScriptRoot 'DefenderXdrStorySeeder.Authentication.ps1')
 
 function Connect-BulkSeederGraph {
     param([Parameter(Mandatory)][string]$LoginHint, [switch]$DeviceCode, [switch]$IncludeAgentScopes)
 
-    Install-GraphAuthenticationModule
-    Import-Module Microsoft.Graph.Authentication -ErrorAction Stop
-
     $scopes = [System.Collections.Generic.List[string]]::new()
-    @('SecurityAlert.Create.All', 'SecurityIncident.ReadWrite.All', 'User.Read.All') | ForEach-Object { $scopes.Add($_) }
+    @(
+        'SecurityAlert.Create.All'
+        'SecurityAlert.ReadWrite.All'
+        'SecurityIncident.ReadWrite.All'
+        'User.Read.All'
+    ) | ForEach-Object { $scopes.Add($_) }
     if ($IncludeAgentScopes) {
         @(
             'AgentIdentityBlueprint.Create'
             'AgentIdentityBlueprintPrincipal.Create'
             'AgentIdentity.Create.All'
             'AgentRegistration.ReadWrite.All'
+            'AgentIdentityBlueprint.Read.All'
+            'AgentIdentityBlueprint.DeleteRestore.All'
+            'AgentIdentity.DeleteRestore.All'
+            'AgentIdentityBlueprintPrincipal.DeleteRestore.All'
         ) | ForEach-Object { $scopes.Add($_) }
     }
-
-    $parameters = @{
-        Scopes       = @($scopes)
-        ContextScope = 'Process'
-        LoginHint    = $LoginHint
-        NoWelcome    = $true
-    }
-    if ($DeviceCode) {
-        $parameters.UseDeviceCode = $true
-    }
-
-    Connect-MgGraph @parameters | Out-Null
-    $context = Get-MgContext
-    if ($null -eq $context) {
-        throw 'Microsoft Graph authentication did not return a context.'
-    }
-    return $context
+    return Connect-DefenderGraphSession -LoginHint $LoginHint -Scopes @($scopes) -UseDeviceCode:$DeviceCode
 }
 
 function Invoke-GraphRequestWithRetry {
@@ -530,8 +499,18 @@ foreach ($attack in @($allAttacks | Select-Object -Skip ($StartAt - 1) -First $t
     $attack['aiDefinitionIndex'] = $null
     $selectedAttacks.Add($attack)
 }
+$plannedAgentPoolCount = if ($CreateDemoAiAgents) {
+    $DemoAgentCount
+}
+else {
+    [math]::Max(1, [math]::Min($AiIncidentCount, $allAgentDefinitions.Count))
+}
 for ($aiOffset = 0; $aiOffset -lt $AiIncidentCount; $aiOffset++) {
-    $definitionIndex = $aiOffset % $allAgentDefinitions.Count
+    # Cycle incidents through the selected agent pool first, then map each pool
+    # position to its catalog definition. This keeps the story and associated
+    # agent aligned when fewer agents than AI incidents are requested.
+    $agentPoolIndex = $aiOffset % $plannedAgentPoolCount
+    $definitionIndex = $agentPoolIndex % $allAgentDefinitions.Count
     $definition = $allAgentDefinitions[$definitionIndex]
     $selectedAttacks.Add([ordered]@{
         id = 1000 + $aiOffset + 1
@@ -561,6 +540,8 @@ $plan = for ($offset = 0; $offset -lt $selectedAttacks.Count; $offset++) {
         Endpoint = [string]$endpoint.name
         Identity = if ([bool]$attack.isAiScenario) { 'Tenant identity plus demo AI agent' } else { 'Selected from tenant at run time' }
         AssociationMode = if ([bool]$attack.isAiScenario) { 'manualProxy' } else { 'manualStory' }
+        AgentPoolPosition = if ([bool]$attack.isAiScenario) { 1 + ($offset - $traditionalIncidentCount) % $plannedAgentPoolCount } else { $null }
+        AgentCatalogId = if ([bool]$attack.isAiScenario) { 1 + [int]$attack.aiDefinitionIndex } else { $null }
         Alerts   = 10 + (($catalogIndex - 1) % 3)
     }
 }
@@ -933,9 +914,6 @@ catch {
 finally {
     Write-Progress -Activity 'Creating Defender XDR incidents' -Completed
     Save-RunManifest -Manifest $manifest -Path $manifestPath
-    if ($null -ne $context) {
-        Disconnect-MgGraph -ErrorAction SilentlyContinue | Out-Null
-    }
 }
 
 if ($null -ne $executionError) {

@@ -24,6 +24,7 @@ $testPath = Join-Path $PSScriptRoot 'tests\Offline.Tests.ps1'
 $runtimeFiles = @(
     'Start-DefenderBulkSeed.ps1'
     'Invoke-DefenderBulkSeeder.ps1'
+    'DefenderXdrStorySeeder.Authentication.ps1'
     'DefenderXdrStorySeeder.Agent365.ps1'
     'Start-DefenderAgentRegistrationRetry.ps1'
     'Invoke-DefenderAgentRegistrationRetry.ps1'

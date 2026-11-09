@@ -11,7 +11,7 @@ param(
 
     [string[]]$ManifestPath,
 
-    [string]$NamePrefix = '[DXR Demo]',
+    [string]$NamePrefix = '[MXDR Demo]',
 
     [switch]$UseDeviceCode
 )

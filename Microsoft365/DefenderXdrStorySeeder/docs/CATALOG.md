@@ -3,7 +3,7 @@
 ## Attack catalog
 
 `catalog/attack-catalog.json` contains an `attacks` array with exactly 50 objects for version
-`0.2.3-beta`.
+`0.2.4-beta`.
 
 Each attack defines:
 

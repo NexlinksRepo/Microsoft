@@ -1,7 +1,7 @@
 #requires -Version 7.2
 
 Set-StrictMode -Version Latest
-$script:AgentSeederVersion = '0.2.3-beta'
+$script:AgentSeederVersion = '0.2.4-beta'
 
 function Get-AgentGraphErrorInfo {
     param([Parameter(Mandatory)]$ErrorRecord)
@@ -93,7 +93,7 @@ function New-AgentRegistrationBody {
 
     $now = [DateTime]::UtcNow.ToString('o')
     $body = [ordered]@{
-        displayName = "[DXR Demo] $([string]$Definition.name)"
+        displayName = "[MXDR Demo] $([string]$Definition.name)"
         description = [string]$Definition.description
         ownerIds = @($OwnerId)
         createdBy = $OwnerId
@@ -189,7 +189,7 @@ function New-DemoAiAgent {
     try {
         $blueprintBody = [ordered]@{
             '@odata.type' = 'Microsoft.Graph.AgentIdentityBlueprint'
-            displayName = "[DXR Demo] $([string]$Definition.name)"
+            displayName = "[MXDR Demo] $([string]$Definition.name)"
             'sponsors@odata.bind' = @("https://graph.microsoft.com/v1.0/users/$OwnerId")
             'owners@odata.bind' = @("https://graph.microsoft.com/v1.0/users/$OwnerId")
             requiredResourceAccess = @(Get-AgentDeclaredResourceAccess -Definition $Definition)
@@ -226,7 +226,7 @@ function New-DemoAiAgent {
         $identity = Invoke-AgentGraphPost `
             -Uri 'https://graph.microsoft.com/v1.0/servicePrincipals/Microsoft.Graph.AgentIdentity' `
             -Body ([ordered]@{
-                displayName = "[DXR Demo] $([string]$Definition.name)"
+                displayName = "[MXDR Demo] $([string]$Definition.name)"
                 agentIdentityBlueprintId = [string]$record.blueprintId
                 'sponsors@odata.bind' = @("https://graph.microsoft.com/v1.0/users/$OwnerId")
             }) `
