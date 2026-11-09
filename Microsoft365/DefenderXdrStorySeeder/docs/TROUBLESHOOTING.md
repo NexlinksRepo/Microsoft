@@ -4,7 +4,7 @@
 
 You launched an obsolete proof-of-concept package. Enter `N`, extract the current release into a new
 directory, and run `Start-DefenderBulkSeed.ps1`. The current default prompt says it will create 50
-incidents and 549 alerts.
+incidents, exactly 549 alerts, and the optional dormant AI-agent totals.
 
 ## `Microsoft.Graph.Authentication` was not found
 
@@ -41,7 +41,7 @@ for the write APIs. A role activation delay can require a new sign-in.
 ## `400 Bad Request` while updating an incident
 
 Use the current version. Earlier packages could serialize a one-item `customTags` collection as a
-scalar. Version `0.1.0-beta` does not depend on a synthetic custom tag and sends only supported
+scalar. Version `0.2.0-beta` does not depend on a synthetic custom tag and sends only supported
 incident fields.
 
 ## `404 Not Found` after creating the first alert
@@ -54,7 +54,23 @@ stops, inspect the partial manifest before resuming.
 
 Do not immediately rerun the same range. Check the latest `artifacts\bulk-seed-run-*.json` and the
 Defender portal. The script does not retry POST because an unconfirmed successful request could be
-duplicated. Resume with `-StartAt` only after confirming the last complete catalog item.
+duplicated. Resume with the same input counts and `-ResumeManifestPath` only after confirming the
+partial incident shown in the manifest.
+
+## Agent creation is partial or unavailable
+
+This can mean the tenant lacks an Agent 365 license, the preview API has not reached the tenant, the
+signed-in account lacks an Agent ID role, or consent was not granted for an optional agent scope.
+The manifest records each blueprint, principal, identity, and registration result separately. The
+incident run continues with `manualProxy` stories and does not claim that a native agent asset was
+linked.
+
+## Dormant agents have no Defender risk rating
+
+This is expected. The script cannot write a risk value and intentionally creates no runtime or
+telemetry. Agent 365 and Defender determine posture and risk from supported tenant signals. Review
+the declared authority profile and the IDs in the manifest rather than treating the profile label as
+a Microsoft-calculated risk.
 
 ## Cleanup found zero alerts
 

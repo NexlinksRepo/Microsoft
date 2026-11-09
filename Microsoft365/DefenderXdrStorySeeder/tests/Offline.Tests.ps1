@@ -27,6 +27,7 @@ function Assert-Condition {
 $requiredFiles = @(
     'Start-DefenderBulkSeed.ps1'
     'Invoke-DefenderBulkSeeder.ps1'
+    'DefenderXdrStorySeeder.Agent365.ps1'
     'Start-DefenderBulkCleanup.ps1'
     'Invoke-DefenderBulkCleanup.ps1'
     'Build-Release.ps1'
@@ -35,9 +36,11 @@ $requiredFiles = @(
     'SECURITY.md'
     'VERSION'
     'catalog\attack-catalog.json'
+    'catalog\ai-agent-catalog.json'
     'catalog\endpoint-roster.json'
     'catalog\mailbox-roster.json'
     'docs\ARCHITECTURE.md'
+    'docs\AGENT365.md'
     'docs\CATALOG.md'
     'docs\TROUBLESHOOTING.md'
     'docs\defender-xdr-seeded-incidents.png'
@@ -50,6 +53,7 @@ foreach ($relativePath in $requiredFiles) {
 $scriptFiles = @(
     'Start-DefenderBulkSeed.ps1'
     'Invoke-DefenderBulkSeeder.ps1'
+    'DefenderXdrStorySeeder.Agent365.ps1'
     'Start-DefenderBulkCleanup.ps1'
     'Invoke-DefenderBulkCleanup.ps1'
     'Build-Release.ps1'
@@ -70,12 +74,17 @@ Assert-Condition -Condition ($version -match '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?
 
 $seederText = Get-Content -LiteralPath (Join-Path $projectRoot 'Invoke-DefenderBulkSeeder.ps1') -Raw
 $cleanupText = Get-Content -LiteralPath (Join-Path $projectRoot 'Invoke-DefenderBulkCleanup.ps1') -Raw
+$launcherText = Get-Content -LiteralPath (Join-Path $projectRoot 'Start-DefenderBulkSeed.ps1') -Raw
+$agentHelperText = Get-Content -LiteralPath (Join-Path $projectRoot 'DefenderXdrStorySeeder.Agent365.ps1') -Raw
 $readmeText = Get-Content -LiteralPath (Join-Path $projectRoot 'README.md') -Raw
 $changelogText = Get-Content -LiteralPath (Join-Path $projectRoot 'CHANGELOG.md') -Raw
 Assert-Condition -Condition ($seederText.Contains("`$ProjectVersion = '$version'")) -Message 'Seeder version matches VERSION'
 Assert-Condition -Condition ($cleanupText.Contains("`$ProjectVersion = '$version'")) -Message 'Cleanup version matches VERSION'
 Assert-Condition -Condition ($readmeText.Contains("Current version: **$version**")) -Message 'README version matches VERSION'
 Assert-Condition -Condition ($changelogText.Contains("## $version")) -Message 'Changelog contains the current version'
+Assert-Condition -Condition ($launcherText.Contains("How many incidents should be created?")) -Message 'Launcher prompts for incident count'
+Assert-Condition -Condition ($launcherText.Contains("Create dormant demo AI agents")) -Message 'Launcher prompts for optional demo agents'
+Assert-Condition -Condition ($launcherText.Contains("`$PSBoundParameters.ContainsKey('IncidentCount')")) -Message 'IncidentCount bypasses the interactive count prompt'
 
 $catalog = Get-Content -LiteralPath (Join-Path $projectRoot 'catalog\attack-catalog.json') -Raw | ConvertFrom-Json -Depth 20
 $attacks = @($catalog.attacks)
@@ -103,6 +112,12 @@ foreach ($catalogNumber in 1..50) {
 }
 Assert-Condition -Condition ($totalAlerts -eq 549) -Message 'Default 50-incident plan contains exactly 549 alerts'
 
+$aiCatalog = Get-Content -LiteralPath (Join-Path $projectRoot 'catalog\ai-agent-catalog.json') -Raw | ConvertFrom-Json -Depth 20
+$agents = @($aiCatalog.agents)
+Assert-Condition -Condition ($agents.Count -eq 10) -Message 'AI-agent catalog contains ten varied demo profiles'
+Assert-Condition -Condition (@($agents.authorityProfile | Sort-Object -Unique).Count -eq 3) -Message 'AI-agent catalog covers low, medium, and elevated profiles'
+Assert-Condition -Condition (@($agents.executionMode | Sort-Object -Unique).Count -eq 2) -Message 'AI-agent catalog covers OBO and service-to-service modes'
+
 $endpointCatalog = Get-Content -LiteralPath (Join-Path $projectRoot 'catalog\endpoint-roster.json') -Raw | ConvertFrom-Json -Depth 20
 $endpoints = @($endpointCatalog.endpoints)
 Assert-Condition -Condition ($endpoints.Count -eq 60) -Message 'Endpoint roster contains exactly 60 fictional endpoints'
@@ -116,6 +131,9 @@ Assert-Condition -Condition (@($mailboxes.alias | Sort-Object -Unique).Count -eq
 foreach ($scope in @('SecurityAlert.Create.All', 'SecurityIncident.ReadWrite.All', 'User.Read.All')) {
     Assert-Condition -Condition ($seederText.Contains($scope)) -Message "Seeder requests required scope: $scope"
 }
+foreach ($scope in @('AgentIdentityBlueprint.Create', 'AgentIdentityBlueprintPrincipal.Create', 'AgentIdentity.Create.All', 'AgentRegistration.ReadWrite.All')) {
+    Assert-Condition -Condition ($seederText.Contains($scope)) -Message "Seeder requests optional agent scope: $scope"
+}
 foreach ($scope in @('SecurityAlert.ReadWrite.All', 'SecurityIncident.ReadWrite.All')) {
     Assert-Condition -Condition ($cleanupText.Contains($scope)) -Message "Cleanup requests required scope: $scope"
 }
@@ -123,6 +141,26 @@ foreach ($scope in @('SecurityAlert.ReadWrite.All', 'SecurityIncident.ReadWrite.
 Assert-Condition -Condition ($cleanupText.Contains("detectionSource -ine 'manual'")) -Message 'Cleanup restricts default selection to Manual alerts'
 Assert-Condition -Condition ($cleanupText.Contains('protectedIncidentIds')) -Message 'Cleanup protects incidents containing unrelated active alerts'
 Assert-Condition -Condition ($seederText.Contains('isExcludedFromCorrelation = $true')) -Message 'Seeder prevents unintended automatic incident correlation'
+Assert-Condition -Condition ($seederText.Contains("associationMode = if (`$isAiScenario) { 'manualProxy'")) -Message 'AI incidents declare manual proxy association'
+Assert-Condition -Condition ($seederText.Contains('agentAssetLinked = $false')) -Message 'AI incidents do not claim native asset linkage'
+Assert-Condition -Condition ($agentHelperText.Contains('credentialsCreated       = $false')) -Message 'Demo agents do not create stored credentials'
+Assert-Condition -Condition ($agentHelperText.Contains('permissionGrantsCreated  = @()')) -Message 'Demo agents do not auto-grant declared permissions'
+Assert-Condition -Condition ($cleanupText.Contains('agentRegistrations/$registrationId')) -Message 'Cleanup removes only recorded registry IDs'
+Assert-Condition -Condition ($cleanupText.Contains('microsoft.graph.agentIdentityBlueprint')) -Message 'Cleanup uses blueprint cascade deletion'
+
+$dryRun = & (Join-Path $projectRoot 'Invoke-DefenderBulkSeeder.ps1') `
+    -GlobalAdminUpn 'offline.test@contoso.example' `
+    -IncidentCount 50 `
+    -CreateDemoAiAgents `
+    -DemoAgentCount 10 `
+    -AiIncidentCount 10 `
+    -Confirm:$false | Where-Object { $_ -is [psobject] -and $_.PSObject.Properties.Name -contains 'Mode' } | Select-Object -Last 1
+$dryRunAlertCount = (@($dryRun.Plan) | Measure-Object -Property Alerts -Sum).Sum
+Assert-Condition -Condition ($dryRun.Mode -eq 'DryRun') -Message 'Mixed AI plan remains non-mutating without Execute'
+Assert-Condition -Condition (@($dryRun.Plan).Count -eq 50) -Message 'Mixed default plan contains 50 incidents'
+Assert-Condition -Condition ($dryRunAlertCount -eq 549) -Message 'Mixed default plan contains exactly 549 alerts'
+Assert-Condition -Condition (@($dryRun.Plan | Where-Object { $_.AssociationMode -eq 'manualProxy' }).Count -eq 10) -Message 'Mixed plan contains the requested ten AI proxy incidents'
+Assert-Condition -Condition (@($dryRun.Plan | Where-Object { $_.Alerts -lt 10 -or $_.Alerts -gt 12 }).Count -eq 0) -Message 'Every mixed-plan incident contains 10 through 12 alerts'
 
 if ($failures.Count -gt 0) {
     throw "Offline validation failed with $($failures.Count) error(s): $($failures -join '; ')"

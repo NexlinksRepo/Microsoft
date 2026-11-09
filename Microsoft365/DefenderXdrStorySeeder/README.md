@@ -1,12 +1,17 @@
 # Defender XDR Story Seeder
 
-Current version: **0.1.0-beta**
+Current version: **0.2.0-beta**
 
 Defender XDR Story Seeder creates a disposable, presentation-friendly incident dataset in the
 Microsoft Defender portal without Microsoft Sentinel or a fleet of physical or virtual endpoints.
 It uses Microsoft Graph to create manual alerts, groups 10–12 alerts into each incident, associates
 tenant identities with fictional endpoint and mailbox assets, and records every created object in a
 local run manifest.
+
+Version 0.2 adds an interactive run planner and optional dormant AI-agent inventory. When supported
+by the tenant, it creates Entra agent identity blueprints, blueprint principals, child agent
+identities, and Agent 365 registry cards directly through Microsoft Graph. It then creates manual
+Defender XDR proxy stories that carry those object identifiers in their narratives and evidence.
 
 > This is a security-testing and demonstration utility. Run it only in a tenant where you are
 > authorized to create hundreds of Defender alerts and incidents. A default run creates 50
@@ -38,6 +43,8 @@ identity, fictional endpoint, IP addresses, URLs, and files.
 | Fictional endpoints | 60 | Rotated through incident evidence; no endpoint is enrolled or created in Entra ID. |
 | Fictional mailboxes | 30 | Generated in the signed-in tenant domain; no Exchange object is created. |
 | Tenant identities | Read dynamically | Enabled member users are randomized across impacted identity evidence. |
+| Dormant demo AI agents | 10 when selected | Blueprints, principals, identities, and registry cards; no runtime or credential is created. |
+| AI proxy incidents | Up to 10 by default | Part of the selected incident total, each still containing exactly 10–12 alerts. |
 
 Alert titles do not contain a bracketed synthetic prefix. Created records are classified as
 `informationalExpectedActivity` with the `securityTesting` determination. Every fifth incident is
@@ -54,6 +61,13 @@ resolved during creation so the resulting dataset includes both active and resol
   the tenant-wide **Assets > Devices** inventory. That inventory requires onboarding or discovery.
 - Microsoft Graph does not expose a supported delete method for these alert and incident records.
   Cleanup resolves and classifies them; it does not erase history.
+- Manual alerts cannot become native Security for AI detections and Graph manual-alert entities do
+  not support an AI-agent asset type. AI stories therefore declare `associationMode: manualProxy`
+  and `agentAssetLinked: false`; IDs in the story are traceable references, not a claimed native
+  portal relationship.
+- Agent risk labels are calculated by Microsoft security products. The script can declare varied
+  least-privilege profiles but cannot set a Defender risk value or guarantee that a dormant agent is
+  evaluated. Agent 365 and Security for AI licensing and rollout still control portal visibility.
 
 See [Architecture and data flow](docs/ARCHITECTURE.md) for the implementation details.
 
@@ -77,6 +91,11 @@ available. It does not install the full Microsoft Graph PowerShell SDK.
 | `SecurityIncident.ReadWrite.All` | Yes | Yes | Read/update the newly created incidents and close seeded incidents. |
 | `User.Read.All` | Yes | No | Read enabled member identities for randomized impacted-user evidence. |
 | `SecurityAlert.ReadWrite.All` | No | Yes | Find and resolve active seeded alerts. |
+| `AgentIdentityBlueprint.Create` | Optional | No | Create a sponsored dormant blueprint. |
+| `AgentIdentityBlueprintPrincipal.Create` | Optional | No | Create its blueprint principal. |
+| `AgentIdentity.Create.All` | Optional | No | Create a child agent identity where supported. |
+| `AgentRegistration.ReadWrite.All` | Optional | Yes | Create/delete the recorded Agent 365 registry card. |
+| `AgentIdentityBlueprint.DeleteRestore.All` | No | Yes | Soft-delete only recorded generated blueprints; child identities are cascade-cleaned. |
 
 The scripts use delegated browser sign-in. They do not accept or store client secrets, certificates,
 tokens, or passwords. Microsoft Graph documentation:
@@ -85,6 +104,8 @@ tokens, or passwords. Microsoft Graph documentation:
 - [Update an alert](https://learn.microsoft.com/graph/api/security-alert-update?view=graph-rest-1.0)
 - [Update an incident](https://learn.microsoft.com/graph/api/security-incident-update?view=graph-rest-1.0)
 - [List users](https://learn.microsoft.com/graph/api/user-list?view=graph-rest-1.0)
+- [Create an agent identity blueprint](https://learn.microsoft.com/graph/api/agentidentityblueprint-post?view=graph-rest-1.0)
+- [Create an agent registration (beta)](https://learn.microsoft.com/microsoft-365/copilot/extensibility/api/admin-settings/agent-registration/agentregistration-create)
 
 ## Install
 
@@ -100,16 +121,40 @@ Get-ChildItem -LiteralPath . -Filter '*.ps1' | Unblock-File
 
 ## Quick start
 
-Only the administrator UPN is required:
+Only the administrator UPN is required. The launcher asks for an incident count (default `50`),
+whether to create demo AI agents (default yes), an agent count (default `10`), and the number of AI
+proxy incidents (default is the smaller of the agent and incident counts):
 
 ```powershell
 pwsh -File .\Start-DefenderBulkSeed.ps1 'global.admin@contoso.com'
 ```
 
-The default confirmation must say:
+Press Enter at every prompt for 50 incidents, 549 alerts, 10 dormant agents, and 10 AI proxy
+incidents. The final confirmation states all exact totals before sign-in writes begin.
+
+To bypass the incident-count question while retaining the remaining prompts:
+
+```powershell
+pwsh -File .\Start-DefenderBulkSeed.ps1 'global.admin@contoso.com' -IncidentCount 12
+```
+
+For a fully parameterized run:
+
+```powershell
+pwsh -File .\Start-DefenderBulkSeed.ps1 'global.admin@contoso.com' `
+  -IncidentCount 12 -CreateDemoAiAgents -DemoAgentCount 6 -AiIncidentCount 6
+```
+
+To keep the traditional-only behavior:
+
+```powershell
+pwsh -File .\Start-DefenderBulkSeed.ps1 'global.admin@contoso.com' -SkipDemoAiAgents
+```
+
+The default confirmation includes:
 
 ```text
-Create 50 incidents containing 549 alerts and impacted endpoint assets
+Create 50 incidents containing exactly 549 alerts, plus 10 dormant demo AI agents; 10 incident(s) will use manual AI proxy stories
 ```
 
 If a launcher says `Create 3 synthetic alerts and one incident`, stop it. That message belongs to an
@@ -142,17 +187,16 @@ count.
 
 ## Resume a partial run
 
-The seeder writes the manifest after each alert. If a run stops, inspect the latest
-`artifacts\bulk-seed-run-*.json` file. The warning printed by the script includes suggested
-`-StartAt` and `-IncidentCount` values.
-
-Example: resume at catalog item 18 and create the remaining 33 incidents:
+The seeder writes the manifest after each object and alert. If a run stops, inspect the latest
+`artifacts\bulk-seed-run-*.json` file. Resume with the same counts and that manifest path. Completed
+incidents and recorded agent objects are reused; an incomplete incident must still be inspected.
 
 ```powershell
 pwsh -File .\Invoke-DefenderBulkSeeder.ps1 `
   -GlobalAdminUpn 'global.admin@contoso.com' `
-  -StartAt 18 `
-  -IncidentCount 33 `
+  -IncidentCount 50 `
+  -CreateDemoAiAgents -DemoAgentCount 10 -AiIncidentCount 10 `
+  -ResumeManifestPath '.\artifacts\bulk-seed-run-20261109-120000.json' `
   -Execute
 ```
 
@@ -178,6 +222,9 @@ The cleanup utility:
 5. Closes an incident only when it has no unrelated active alert and every selected alert update for
    that incident succeeded.
 6. Records successes, failures, and protected incidents in `artifacts\cleanup-run-*.json`.
+7. Reads only IDs recorded in seed manifests, removes matching Agent 365 registrations, and
+   soft-deletes matching blueprints. Blueprint deletion triggers Microsoft-managed cleanup of child
+   identities and principals. It never discovers and deletes unrelated agents by name.
 
 Preview the cleanup without making changes:
 
@@ -198,6 +245,11 @@ avoided.
 | --- | --- | --- |
 | `GlobalAdminUpn` | Required | Login hint used for delegated sign-in. |
 | `IncidentCount` | `50` | Number of catalog incidents to create, from 1 through 50. |
+| `CreateDemoAiAgents` | Prompt | Answer yes without prompting; mutually exclusive with `SkipDemoAiAgents`. |
+| `SkipDemoAiAgents` | Prompt | Keep the run traditional-only without prompting. |
+| `DemoAgentCount` | `10` | Number of dormant demo identity sets, from 1 through 50. |
+| `AiIncidentCount` | `min(agents, incidents)` | Number of selected incidents using AI proxy scenarios. |
+| `ResumeManifestPath` | Empty | Continue a matching 0.2 manifest. |
 | `UseDeviceCode` | Off | Use device-code authentication instead of interactive browser sign-in. |
 
 ### `Invoke-DefenderBulkSeeder.ps1`
@@ -206,6 +258,11 @@ avoided.
 | --- | --- | --- |
 | `GlobalAdminUpn` | Required | Login hint for delegated authentication. |
 | `IncidentCount` | `50` | Number of incidents to plan or create. |
+| `CreateDemoAiAgents` | Off | Attempt supported Entra/Agent 365 creation APIs. |
+| `DemoAgentCount` | `10` | Number of demo agents to attempt. |
+| `AiIncidentCount` | `0` | Number of AI manual proxy incidents within the total. |
+| `AiAgentCatalogPath` | `catalog\ai-agent-catalog.json` | Alternate AI profiles and scenarios. |
+| `ResumeManifestPath` | Empty | Resume after completed incidents using the same input counts. |
 | `StartAt` | `1` | One-based catalog item at which to begin. |
 | `DelayMilliseconds` | `1000` | Delay between write operations; accepted range is 500–30000. |
 | `RandomSeed` | `20261106` | Makes identity, mailbox, and endpoint assignment repeatable. |
@@ -222,6 +279,9 @@ avoided.
 | --- | --- | --- |
 | `GlobalAdminUpn` | Required | Login hint for delegated authentication. |
 | `CatalogPath` | `catalog\attack-catalog.json` | Catalog used to recognize seeded alert titles. |
+| `AiAgentCatalogPath` | `catalog\ai-agent-catalog.json` | Catalog used to recognize AI proxy alert titles. |
+| `SeedManifestPath` | All local seed manifests | Restrict agent cleanup to one manifest. |
+| `SkipDemoAgentCleanup` | Off | Resolve alerts/incidents without removing recorded agents. |
 | `DelayMilliseconds` | `500` | Delay between update operations; accepted range is 0–5000. |
 | `IncludeLegacyPoc` | `true` | Recognize the three older proof-of-concept alert titles. |
 | `AllManualAlerts` | Off | Select all active Manual alerts; potentially destructive to unrelated demos. |
@@ -250,6 +310,7 @@ Catalog and roster files are ordinary JSON:
 - `catalog/attack-catalog.json` contains 50 attack definitions.
 - `catalog/endpoint-roster.json` contains 60 fictional endpoint identities.
 - `catalog/mailbox-roster.json` contains 30 fictional shared-mailbox aliases.
+- `catalog/ai-agent-catalog.json` contains 10 dormant agent profiles and AI proxy scenarios.
 
 Keep all evidence fictional and use documentation-reserved IP address ranges and domains. Run the
 offline validation after any edit:
@@ -275,6 +336,7 @@ The version comes from `VERSION`; the committed scripts and changelog must use t
 ## Documentation
 
 - [Architecture and data flow](docs/ARCHITECTURE.md)
+- [Agent 365 and Security for AI behavior](docs/AGENT365.md)
 - [Catalog and evidence model](docs/CATALOG.md)
 - [Troubleshooting](docs/TROUBLESHOOTING.md)
 - [Changelog](CHANGELOG.md)
@@ -285,5 +347,5 @@ The version comes from `VERSION`; the committed scripts and changelog must use t
 This project is licensed under the repository's GNU General Public License, version 3. Microsoft
 product names identify the services used and do not imply Microsoft affiliation or endorsement.
 
-Version `0.1.0-beta` is suitable for authorized demonstrations and lab tenants. It is not a
+Version `0.2.0-beta` is suitable for authorized demonstrations and lab tenants. It is not a
 production telemetry simulator or a substitute for real Defender workload onboarding.
