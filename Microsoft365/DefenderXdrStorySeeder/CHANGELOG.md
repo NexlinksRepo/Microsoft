@@ -3,6 +3,19 @@
 All notable changes to Defender XDR Story Seeder are documented here. Versions follow Semantic
 Versioning. Tags use the repository convention `defender-xdr-story-seeder/v<version>`.
 
+## 0.2.4-beta — 2026-11-09
+
+- Rename newly created agent blueprints, principals, identities, and registry cards to use the exact
+  `[MXDR Demo]` prefix.
+- Persist the Microsoft Graph delegated sign-in in the secure current-user cache and reuse it across
+  separate seeding, registration-retry, and cleanup PowerShell processes.
+- Verify the cached account and delegated scopes before reuse and stop automatically signing out at
+  the end of each run.
+- Request cleanup permissions during seeding so a later cleanup can normally reuse the same
+  consented session without another interactive sign-in.
+- Cycle AI incidents through the selected demo-agent pool while preserving the matching story
+  profile when the AI incident count exceeds the agent count.
+
 ## 0.2.3-beta — 2026-11-09
 
 - Treat the optional `@odata.nextLink` property as absent on the final Agent ID blueprint page.

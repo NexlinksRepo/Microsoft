@@ -1,6 +1,6 @@
 # Defender XDR Story Seeder
 
-Current version: **0.2.3-beta**
+Current version: **0.2.4-beta**
 
 Defender XDR Story Seeder creates a disposable, presentation-friendly incident dataset in the
 Microsoft Defender portal without Microsoft Sentinel or a fleet of physical or virtual endpoints.
@@ -18,12 +18,17 @@ stops repeating a tenant-wide 401/403 registration failure, and adds a registrat
 reuses existing identities and incidents.
 
 Version 0.2.2 adds a dedicated agent-only cleanup launcher. It recursively discovers seeder
-manifests, deduplicates their recorded object IDs, and also finds blueprint names beginning exactly
-with `[DXR Demo]`. It removes only those registrations, blueprints, child identities, and blueprint
-principals without reading or changing Defender alerts or incidents.
+manifests, deduplicates their recorded object IDs, and also finds blueprint names using that
+release's exact legacy prefix. It removes only those registrations, blueprints, child identities,
+and blueprint principals without reading or changing Defender alerts or incidents.
 
 Version 0.2.3 fixes single-page Agent ID blueprint discovery when Microsoft Graph correctly omits
 the optional `@odata.nextLink` property.
+
+Version 0.2.4 names new demo agents with the exact `[MXDR Demo]` prefix, securely reuses the
+administrator's Microsoft Graph sign-in across seeding and cleanup processes, and keeps AI stories
+aligned when more AI incidents than demo agents are requested. Earlier packages retain their
+historical naming only inside their archived ZIPs and changelog entries.
 
 > This is a security-testing and demonstration utility. Run it only in a tenant where you are
 > authorized to create hundreds of Defender alerts and incidents. A default run creates 50
@@ -102,18 +107,22 @@ available. It does not install the full Microsoft Graph PowerShell SDK.
 | `SecurityAlert.Create.All` | Yes | No | Create manual security alerts. |
 | `SecurityIncident.ReadWrite.All` | Yes | Yes | Read/update the newly created incidents and close seeded incidents. |
 | `User.Read.All` | Yes | No | Read enabled member identities for randomized impacted-user evidence. |
-| `SecurityAlert.ReadWrite.All` | No | Yes | Find and resolve active seeded alerts. |
+| `SecurityAlert.ReadWrite.All` | Yes | Yes | Seed-time consent allows later cleanup to reuse the same cached sign-in. |
 | `AgentIdentityBlueprint.Create` | Optional | No | Create a sponsored dormant blueprint. |
 | `AgentIdentityBlueprintPrincipal.Create` | Optional | No | Create its blueprint principal. |
 | `AgentIdentity.Create.All` | Optional | No | Create a child agent identity where supported. |
 | `AgentRegistration.ReadWrite.All` | Optional | Yes | Create/delete the recorded Agent 365 registry card. |
-| `AgentIdentityBlueprint.Read.All` | No | Agent-only | Discover blueprints whose name begins with the exact cleanup prefix. |
-| `AgentIdentityBlueprint.DeleteRestore.All` | No | Yes | Soft-delete only recorded generated blueprints; child identities are cascade-cleaned. |
-| `AgentIdentity.DeleteRestore.All` | No | Agent-only | Remove a recorded child identity if cascade cleanup has not already removed it. |
-| `AgentIdentityBlueprintPrincipal.DeleteRestore.All` | No | Agent-only | Remove a recorded blueprint principal if cascade cleanup has not already removed it. |
+| `AgentIdentityBlueprint.Read.All` | Optional | Agent-only | Discover blueprints whose name begins with the exact cleanup prefix. |
+| `AgentIdentityBlueprint.DeleteRestore.All` | Optional | Yes | Soft-delete only recorded generated blueprints; child identities are cascade-cleaned. |
+| `AgentIdentity.DeleteRestore.All` | Optional | Agent-only | Remove a recorded child identity if cascade cleanup has not already removed it. |
+| `AgentIdentityBlueprintPrincipal.DeleteRestore.All` | Optional | Agent-only | Remove a recorded blueprint principal if cascade cleanup has not already removed it. |
 
 The scripts use delegated browser sign-in. They do not accept or store client secrets, certificates,
-tokens, or passwords. Microsoft Graph documentation:
+or passwords. Microsoft Graph securely caches the delegated sign-in for the current Windows user,
+refreshes it when needed, and makes it available to later PowerShell processes. The scripts verify
+the requested administrator and required scopes before reuse and do not call `Disconnect-MgGraph`.
+Run `Disconnect-MgGraph` yourself when you intentionally want to end the cached session. Microsoft
+Graph documentation:
 
 - [Create a manual alert (beta)](https://learn.microsoft.com/graph/api/security-alert-post-manualalert?view=graph-rest-beta)
 - [Update an alert](https://learn.microsoft.com/graph/api/security-alert-update?view=graph-rest-1.0)
@@ -147,6 +156,10 @@ pwsh -File .\Start-DefenderBulkSeed.ps1 'global.admin@contoso.com'
 Press Enter at every prompt for 50 incidents, 549 alerts, 10 dormant agents, and 10 AI proxy
 incidents. The final confirmation states all exact totals before sign-in writes begin.
 
+If more AI incidents than agents are selected, the incidents cycle through the selected agent pool.
+For example, three agents and six AI incidents use agents 1, 2, 3, 1, 2, and 3 while retaining the
+matching story profile for each association.
+
 To bypass the incident-count question while retaining the remaining prompts:
 
 ```powershell
@@ -157,7 +170,7 @@ For a fully parameterized run:
 
 ```powershell
 pwsh -File .\Start-DefenderBulkSeed.ps1 'global.admin@contoso.com' `
-  -IncidentCount 12 -CreateDemoAiAgents -DemoAgentCount 6 -AiIncidentCount 6
+  -IncidentCount 12 -CreateDemoAiAgents -DemoAgentCount 3 -AiIncidentCount 6
 ```
 
 To keep the traditional-only behavior:
@@ -250,7 +263,7 @@ pwsh -File .\Start-DefenderAgentCleanup.ps1 `
 The second argument is searched recursively for `bulk-seed-run-*.json`. The cleanup deduplicates
 copied manifests and targets recorded Agent 365 registration, blueprint, child-identity, and
 blueprint-principal IDs. It also lists Agent ID blueprints and adds only those whose display name
-starts with the exact `[DXR Demo]` prefix, catching a run whose manifest was misplaced. A
+starts with the exact `[MXDR Demo]` prefix, catching a run whose manifest was misplaced. A
 confirmation displays the selected agent sets and object IDs before deletion.
 
 To preview one manifest without signing in or changing the tenant:
@@ -366,7 +379,7 @@ avoided.
 | `GlobalAdminUpn` | Required | Login hint used for delegated sign-in. |
 | `SearchRoot` | Local `artifacts` folder | Folder recursively searched for seed manifests, or one manifest file. |
 | `ManifestPath` | Empty | Additional explicit seed manifest paths. |
-| `NamePrefix` | `[DXR Demo]` | Exact beginning of blueprint names additionally selected by the launcher. |
+| `NamePrefix` | `[MXDR Demo]` | Exact beginning of blueprint names additionally selected by the launcher. |
 | `UseDeviceCode` | Off | Use device-code authentication. |
 
 ## Run manifests and privacy
@@ -427,7 +440,7 @@ The version comes from `VERSION`; the committed scripts and changelog must use t
 This project is licensed under the repository's GNU General Public License, version 3. Microsoft
 product names identify the services used and do not imply Microsoft affiliation or endorsement.
 
-Version `0.2.3-beta` is suitable for authorized demonstrations and lab tenants. It is not a
+Version `0.2.4-beta` is suitable for authorized demonstrations and lab tenants. It is not a
 production telemetry simulator or a substitute for real Defender workload onboarding.
 
 

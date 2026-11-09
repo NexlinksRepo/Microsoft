@@ -13,7 +13,7 @@ param(
     [switch]$DiscoverByPrefix,
 
     [ValidateNotNullOrEmpty()]
-    [string]$NamePrefix = '[DXR Demo]',
+    [string]$NamePrefix = '[MXDR Demo]',
 
     [ValidateRange(0, 5000)]
     [int]$DelayMilliseconds = 250,
@@ -27,25 +27,9 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-$ProjectVersion = '0.2.3-beta'
+$ProjectVersion = '0.2.4-beta'
 
-function Install-GraphAuthenticationModule {
-    $moduleName = 'Microsoft.Graph.Authentication'
-    if (Get-Module -ListAvailable -Name $moduleName) {
-        return
-    }
-
-    Write-Host "Installing required PowerShell module '$moduleName' for the current user..." -ForegroundColor Cyan
-    if (Get-Command Install-PSResource -ErrorAction SilentlyContinue) {
-        Install-PSResource -Name $moduleName -Repository PSGallery -Scope CurrentUser -TrustRepository -AcceptLicense -Quiet -ErrorAction Stop
-    }
-    elseif (Get-Command Install-Module -ErrorAction SilentlyContinue) {
-        Install-Module -Name $moduleName -Repository PSGallery -Scope CurrentUser -Force -AllowClobber -Confirm:$false -ErrorAction Stop
-    }
-    else {
-        throw "Install PowerShellGet or PSResourceGet, then install '$moduleName'."
-    }
-}
+. (Join-Path $PSScriptRoot 'DefenderXdrStorySeeder.Authentication.ps1')
 
 function Get-GraphStatusCode {
     param([Parameter(Mandatory)]$ErrorRecord)
@@ -226,20 +210,11 @@ $connectParameters = @{
         'AgentIdentity.DeleteRestore.All'
         'AgentIdentityBlueprintPrincipal.DeleteRestore.All'
     )
-    ContextScope = 'Process'
-    LoginHint = $GlobalAdminUpn
-    NoWelcome = $true
-}
-if ($UseDeviceCode) {
-    $connectParameters.UseDeviceCode = $true
 }
 
 $context = $null
 if ($DiscoverByPrefix) {
-    Install-GraphAuthenticationModule
-    Import-Module Microsoft.Graph.Authentication -ErrorAction Stop
-    Connect-MgGraph @connectParameters | Out-Null
-    $context = Get-MgContext
+    $context = Connect-DefenderGraphSession -LoginHint $GlobalAdminUpn -Scopes $connectParameters.Scopes -UseDeviceCode:$UseDeviceCode
 
     $blueprintIds = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     foreach ($agent in $agentRecords) {
@@ -255,9 +230,6 @@ if ($DiscoverByPrefix) {
 }
 
 if ($agentRecords.Count -eq 0) {
-    if ($null -ne $context) {
-        Disconnect-MgGraph -ErrorAction SilentlyContinue | Out-Null
-    }
     Write-Host "No agent blueprints beginning with '$NamePrefix' or recorded demo agents were found." -ForegroundColor Green
     return [pscustomobject]@{ Mode = if ($Execute) { 'Executed' } else { 'DryRun' }; Version = $ProjectVersion; AgentCount = 0; DeletedObjects = 0; FailedObjects = 0 }
 }
@@ -265,9 +237,6 @@ if ($agentRecords.Count -eq 0) {
 if (-not $Execute) {
     Write-Host 'DRY RUN — no Agent 365 or Entra objects were changed.' -ForegroundColor Cyan
     $agentRecords | Select-Object displayName, blueprintId, agentIdentityId, blueprintPrincipalId, agentRegistrationId | Format-Table -AutoSize | Out-Host
-    if ($null -ne $context) {
-        Disconnect-MgGraph -ErrorAction SilentlyContinue | Out-Null
-    }
     return [pscustomobject]@{
         Mode = 'DryRun'
         Version = $ProjectVersion
@@ -284,9 +253,6 @@ if (-not $PSCmdlet.ShouldProcess(
     "Microsoft Entra and Agent 365 tenant selected by $GlobalAdminUpn",
     "Soft-delete $($agentRecords.Count) demo agent set(s) recorded in manifests or beginning with '$NamePrefix', covering up to $objectCount object IDs; do not change Defender alerts or incidents"
 )) {
-    if ($null -ne $context) {
-        Disconnect-MgGraph -ErrorAction SilentlyContinue | Out-Null
-    }
     return
 }
 
@@ -311,10 +277,7 @@ Save-AgentCleanupManifest -Manifest $cleanupManifest -Path $cleanupManifestPath
 
 try {
     if ($null -eq $context) {
-        Install-GraphAuthenticationModule
-        Import-Module Microsoft.Graph.Authentication -ErrorAction Stop
-        Connect-MgGraph @connectParameters | Out-Null
-        $context = Get-MgContext
+        $context = Connect-DefenderGraphSession -LoginHint $GlobalAdminUpn -Scopes $connectParameters.Scopes -UseDeviceCode:$UseDeviceCode
     }
     $cleanupManifest.tenantId = [string]$context.TenantId
     $cleanupManifest.account = [string]$context.Account
@@ -358,9 +321,6 @@ try {
 }
 finally {
     Write-Progress -Activity 'Deleting recorded demo AI agents' -Completed
-    if ($null -ne $context) {
-        Disconnect-MgGraph -ErrorAction SilentlyContinue | Out-Null
-    }
 }
 
 $deletedCount = @($cleanupManifest.operations | Where-Object { $_.result -eq 'deleted' }).Count

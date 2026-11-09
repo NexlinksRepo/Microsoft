@@ -30,57 +30,23 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-$ProjectVersion = '0.2.3-beta'
+$ProjectVersion = '0.2.4-beta'
 
-function Install-GraphAuthenticationModule {
-    $moduleName = 'Microsoft.Graph.Authentication'
-    if (Get-Module -ListAvailable -Name $moduleName) {
-        return
-    }
-
-    Write-Host "Installing required PowerShell module '$moduleName' for the current user..." -ForegroundColor Cyan
-    if (Get-Command Install-PSResource -ErrorAction SilentlyContinue) {
-        Install-PSResource -Name $moduleName -Repository PSGallery -Scope CurrentUser -TrustRepository -AcceptLicense -Quiet -ErrorAction Stop
-    }
-    elseif (Get-Command Install-Module -ErrorAction SilentlyContinue) {
-        Install-Module -Name $moduleName -Repository PSGallery -Scope CurrentUser -Force -AllowClobber -Confirm:$false -ErrorAction Stop
-    }
-    else {
-        throw "Install PowerShellGet or PSResourceGet, then install '$moduleName'."
-    }
-
-    if (-not (Get-Module -ListAvailable -Name $moduleName)) {
-        throw "'$moduleName' was installed but is not visible in the current module path. Reopen PowerShell and run the launcher again."
-    }
-}
+. (Join-Path $PSScriptRoot 'DefenderXdrStorySeeder.Authentication.ps1')
 
 function Connect-CleanupGraph {
     param([Parameter(Mandatory)][string]$LoginHint, [switch]$DeviceCode)
 
-    Install-GraphAuthenticationModule
-    Import-Module Microsoft.Graph.Authentication -ErrorAction Stop
-
-    $parameters = @{
-        Scopes       = @(
-            'SecurityAlert.ReadWrite.All'
-            'SecurityIncident.ReadWrite.All'
-            'AgentRegistration.ReadWrite.All'
-            'AgentIdentityBlueprint.DeleteRestore.All'
-        )
-        ContextScope = 'Process'
-        LoginHint    = $LoginHint
-        NoWelcome    = $true
-    }
-    if ($DeviceCode) {
-        $parameters.UseDeviceCode = $true
-    }
-
-    Connect-MgGraph @parameters | Out-Null
-    $context = Get-MgContext
-    if ($null -eq $context) {
-        throw 'Microsoft Graph authentication did not return a context.'
-    }
-    return $context
+    $scopes = @(
+        'SecurityAlert.ReadWrite.All'
+        'SecurityIncident.ReadWrite.All'
+        'AgentRegistration.ReadWrite.All'
+        'AgentIdentityBlueprint.Read.All'
+        'AgentIdentityBlueprint.DeleteRestore.All'
+        'AgentIdentity.DeleteRestore.All'
+        'AgentIdentityBlueprintPrincipal.DeleteRestore.All'
+    )
+    return Connect-DefenderGraphSession -LoginHint $LoginHint -Scopes $scopes -UseDeviceCode:$DeviceCode
 }
 
 function Invoke-GraphRequestWithRetry {
@@ -530,9 +496,6 @@ finally {
     Write-Progress -Activity 'Resolving seeded Defender XDR alerts' -Completed
     Write-Progress -Activity 'Closing seeded Defender XDR incidents' -Completed
     Write-Progress -Activity 'Removing recorded demo AI agents' -Completed
-    if ($null -ne $context) {
-        Disconnect-MgGraph -ErrorAction SilentlyContinue | Out-Null
-    }
 }
 
 if ($null -ne $fatalError) {

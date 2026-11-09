@@ -19,27 +19,10 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-$ProjectVersion = '0.2.3-beta'
+$ProjectVersion = '0.2.4-beta'
 
 . (Join-Path $PSScriptRoot 'DefenderXdrStorySeeder.Agent365.ps1')
-
-function Install-GraphAuthenticationModule {
-    $moduleName = 'Microsoft.Graph.Authentication'
-    if (Get-Module -ListAvailable -Name $moduleName) {
-        return
-    }
-
-    Write-Host "Installing required PowerShell module '$moduleName' for the current user..." -ForegroundColor Cyan
-    if (Get-Command Install-PSResource -ErrorAction SilentlyContinue) {
-        Install-PSResource -Name $moduleName -Repository PSGallery -Scope CurrentUser -TrustRepository -AcceptLicense -Quiet -ErrorAction Stop
-    }
-    elseif (Get-Command Install-Module -ErrorAction SilentlyContinue) {
-        Install-Module -Name $moduleName -Repository PSGallery -Scope CurrentUser -Force -AllowClobber -Confirm:$false -ErrorAction Stop
-    }
-    else {
-        throw "Install PowerShellGet or PSResourceGet, then install '$moduleName'."
-    }
-}
+. (Join-Path $PSScriptRoot 'DefenderXdrStorySeeder.Authentication.ps1')
 
 function Resolve-RegistrationManifestPath {
     param([AllowEmptyString()][string]$Path, [Parameter(Mandatory)][string]$Directory)
@@ -103,18 +86,6 @@ if (-not $PSCmdlet.ShouldProcess(
     return
 }
 
-Install-GraphAuthenticationModule
-Import-Module Microsoft.Graph.Authentication -ErrorAction Stop
-$connectParameters = @{
-    Scopes = @('AgentRegistration.ReadWrite.All', 'User.Read')
-    ContextScope = 'Process'
-    LoginHint = $GlobalAdminUpn
-    NoWelcome = $true
-}
-if ($UseDeviceCode) {
-    $connectParameters.UseDeviceCode = $true
-}
-
 $context = $null
 $registered = 0
 $failed = 0
@@ -129,8 +100,10 @@ $retryLog = [ordered]@{
 }
 
 try {
-    Connect-MgGraph @connectParameters | Out-Null
-    $context = Get-MgContext
+    $context = Connect-DefenderGraphSession `
+        -LoginHint $GlobalAdminUpn `
+        -Scopes @('AgentRegistration.ReadWrite.All', 'User.Read.All') `
+        -UseDeviceCode:$UseDeviceCode
     $retryLog.signedInAccount = [string]$context.Account
     $retryLog.tenantId = [string]$context.TenantId
     if ('AgentRegistration.ReadWrite.All' -notin @($context.Scopes)) {
@@ -197,9 +170,6 @@ try {
 }
 finally {
     Write-Progress -Activity 'Retrying Agent 365 registration' -Completed
-    if ($null -ne $context) {
-        Disconnect-MgGraph -ErrorAction SilentlyContinue | Out-Null
-    }
 }
 
 if ($failed -gt 0) {

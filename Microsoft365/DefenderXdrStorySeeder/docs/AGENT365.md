@@ -90,7 +90,7 @@ performed.
 The seed manifest is sensitive tenant data and must remain under the ignored `artifacts` directory.
 If a POST succeeded but its response was lost, the object ID might not be present in the manifest.
 POST calls are not retried for exactly this reason: an automatic retry could create duplicates.
-Review the Entra audit log and `[DXR Demo]` object names before manual recovery.
+Review the Entra audit log and `[MXDR Demo]` object names before manual recovery.
 
 Agent object deletion is recoverable for the Microsoft retention period because blueprint deletion
 is a soft delete. Defender alert and incident cleanup is different: those records are resolved and
@@ -99,7 +99,7 @@ classified, not erased.
 Version 0.2.2 also provides `Start-DefenderAgentCleanup.ps1` for agent-only removal. Point its
 second argument at a parent folder such as Downloads and it recursively reads every
 `bulk-seed-run-*.json`, deduplicates copied manifests, and deletes the recorded agent objects. The
-launcher also lists blueprints and includes only names beginning exactly with `[DXR Demo]`, which
+launcher also lists blueprints and includes only names beginning exactly with `[MXDR Demo]`, which
 catches a missing manifest. It never calls Defender alert or incident endpoints. The underlying
 script can be run without `-Execute` to preview one or more manifests before deletion.
 
