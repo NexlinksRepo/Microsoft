@@ -1,10 +1,6 @@
 name: Defender XDR Story Seeder
 
 on:
-  push:
-    paths:
-      - "Microsoft365/DefenderXdrStorySeeder/**"
-      - ".github/workflows/defender-xdr-story-seeder.yml"
   pull_request:
     paths:
       - "Microsoft365/DefenderXdrStorySeeder/**"
@@ -31,3 +27,4 @@ jobs:
 
       - name: Build versioned release archive
         run: ./Build-Release.ps1
+
