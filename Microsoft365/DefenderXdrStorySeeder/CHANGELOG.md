@@ -15,6 +15,12 @@ Versioning. Tags use the repository convention `defender-xdr-story-seeder/v<vers
   consented session without another interactive sign-in.
 - Cycle AI incidents through the selected demo-agent pool while preserving the matching story
   profile when the AI incident count exceeds the agent count.
+- Revise the 0.2.4 package in place with schema-3 manifests and deterministic per-alert correlation
+  markers for ambiguous Microsoft Graph POST recovery.
+- Reconcile `408`, `429`, transport, and server-error POST results against the incident and recent
+  alerts before performing at most one controlled retry.
+- Resume the existing partial incident at its first unrecorded stage instead of creating a duplicate
+  incident; refuse unsafe partial schema-2 manifests that predate correlation markers.
 
 ## 0.2.3-beta — 2026-11-09
 

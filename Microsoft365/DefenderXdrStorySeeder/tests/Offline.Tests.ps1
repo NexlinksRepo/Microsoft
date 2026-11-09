@@ -166,6 +166,11 @@ Assert-Condition -Condition ($cleanupText.Contains('protectedIncidentIds')) -Mes
 Assert-Condition -Condition ($seederText.Contains('isExcludedFromCorrelation = $true')) -Message 'Seeder prevents unintended automatic incident correlation'
 Assert-Condition -Condition ($seederText.Contains("associationMode = if (`$isAiScenario) { 'manualProxy'")) -Message 'AI incidents declare manual proxy association'
 Assert-Condition -Condition ($seederText.Contains('agentAssetLinked = $false')) -Message 'AI incidents do not claim native asset linkage'
+Assert-Condition -Condition ($seederText.Contains('schemaVersion     = 3')) -Message 'New manifests use timeout-recovery schema 3'
+Assert-Condition -Condition ($seederText.Contains('[MXDR-SEED:$runId')) -Message 'Created alerts carry deterministic correlation markers'
+Assert-Condition -Condition ($seederText.Contains('Invoke-CreateManualAlertWithRecovery')) -Message 'Seeder reconciles ambiguous alert POST results'
+Assert-Condition -Condition ($seederText.Contains('$existingIncidentRecords[$resumeOffset]')) -Message 'Resume reuses the partial incident record'
+Assert-Condition -Condition ($seederText.Contains('$firstPendingStageOffset = @($incidentRecord.alerts).Count')) -Message 'Resume starts at the first unrecorded alert stage'
 Assert-Condition -Condition ($agentHelperText.Contains('credentialsCreated       = $false')) -Message 'Demo agents do not create stored credentials'
 Assert-Condition -Condition ($agentHelperText.Contains('permissionGrantsCreated  = @()')) -Message 'Demo agents do not auto-grant declared permissions'
 Assert-Condition -Condition (-not $agentHelperText.Contains('managedByAppId =')) -Message 'Registry payload does not misidentify the blueprint as the calling management app'
@@ -222,6 +227,66 @@ $singlePageDiscovery = @(Get-PrefixedAgentBlueprintRecords -Prefix '[MXDR Demo]'
 Assert-Condition -Condition ($singlePageDiscovery.Count -eq 1) -Message 'Single-page blueprint discovery succeeds without @odata.nextLink'
 Remove-Item -LiteralPath Function:\Invoke-MgGraphRequest -Force
 Remove-Item -LiteralPath Function:\Get-PrefixedAgentBlueprintRecords -Force
+
+$seederTokens = $null
+$seederParseErrors = $null
+$seederAst = [System.Management.Automation.Language.Parser]::ParseFile(
+    (Join-Path $projectRoot 'Invoke-DefenderBulkSeeder.ps1'),
+    [ref]$seederTokens,
+    [ref]$seederParseErrors
+)
+$createWithRecoveryFunction = $seederAst.Find({
+    param($node)
+    $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+    $node.Name -eq 'Invoke-CreateManualAlertWithRecovery'
+}, $true)
+Invoke-Expression $createWithRecoveryFunction.Extent.Text
+
+$script:recoveryPostCalls = 0
+function Invoke-MgGraphRequest {
+    [CmdletBinding()]
+    param([string]$Method, [string]$Uri, [string]$Body, [string]$ContentType, [string]$OutputType)
+    $script:recoveryPostCalls++
+    throw 'simulated HTTP timeout'
+}
+function Get-GraphStatusCode { param($ErrorRecord) return 408 }
+function Wait-ManualAlertByMarker {
+    param($Marker, $IncidentId, $NotBeforeUtc, $MaximumAttempts, $DelaySeconds)
+    return [pscustomobject]@{ id = 'recovered-alert'; incidentId = '77'; title = 'Recovered' }
+}
+$recoveredAlert = Invoke-CreateManualAlertWithRecovery `
+    -Body ([ordered]@{ title = 'Recovered'; description = 'marker' }) `
+    -Marker '[MXDR-SEED:test:1:2]' `
+    -IncidentId '77' `
+    -AttemptedAtUtc ([DateTime]::UtcNow)
+Assert-Condition -Condition ($recoveredAlert.id -eq 'recovered-alert') -Message 'Ambiguous POST response recovers the existing alert'
+Assert-Condition -Condition ($script:recoveryPostCalls -eq 1) -Message 'Recovered ambiguous POST is not submitted twice'
+
+$script:recoveryPostCalls = 0
+function Invoke-MgGraphRequest {
+    [CmdletBinding()]
+    param([string]$Method, [string]$Uri, [string]$Body, [string]$ContentType, [string]$OutputType)
+    $script:recoveryPostCalls++
+    if ($script:recoveryPostCalls -eq 1) {
+        throw 'simulated HTTP timeout'
+    }
+    return [pscustomobject]@{ id = 'retried-alert'; incidentId = '77'; title = 'Retried' }
+}
+function Wait-ManualAlertByMarker {
+    param($Marker, $IncidentId, $NotBeforeUtc, $MaximumAttempts, $DelaySeconds)
+    return $null
+}
+$retriedAlert = Invoke-CreateManualAlertWithRecovery `
+    -Body ([ordered]@{ title = 'Retried'; description = 'marker' }) `
+    -Marker '[MXDR-SEED:test:1:3]' `
+    -IncidentId '77' `
+    -AttemptedAtUtc ([DateTime]::UtcNow)
+Assert-Condition -Condition ($retriedAlert.id -eq 'retried-alert') -Message 'Absent timed-out alert receives one controlled retry'
+Assert-Condition -Condition ($script:recoveryPostCalls -eq 2) -Message 'Ambiguous POST is retried at most once after reconciliation'
+
+foreach ($functionName in @('Invoke-MgGraphRequest', 'Get-GraphStatusCode', 'Wait-ManualAlertByMarker', 'Invoke-CreateManualAlertWithRecovery')) {
+    Remove-Item -LiteralPath "Function:\$functionName" -Force -ErrorAction SilentlyContinue
+}
 
 $dryRun = & (Join-Path $projectRoot 'Invoke-DefenderBulkSeeder.ps1') `
     -GlobalAdminUpn 'offline.test@contoso.example' `
