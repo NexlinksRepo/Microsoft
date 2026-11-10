@@ -108,9 +108,12 @@ See [Architecture and data flow](docs/ARCHITECTURE.md) for the implementation de
 - Internet access to Microsoft Graph and PowerShell Gallery on first run
 
 The evaluated-agent lab additionally requires the .NET 8 SDK or later and the Microsoft Agent 365
-CLI. If the CLI is missing, the launcher installs it for the current user. The tenant must have Agent
-365 enabled, and the signed-in administrator must be able to create agent identity objects and grant
-the selected OAuth permissions. MCP availability varies by tenant and rollout.
+CLI. If the SDK is missing, the executing launcher installs Microsoft's `Microsoft.DotNet.SDK.8`
+package through Windows Package Manager and displays a Windows elevation prompt. It then installs
+the Agent 365 CLI for the current user and continues the same run. If Windows reports that a restart
+is required, restart and rerun the launcher. The tenant must have Agent 365 enabled, and the
+signed-in administrator must be able to create agent identity objects and grant the selected OAuth
+permissions. MCP availability varies by tenant and rollout.
 
 The launcher installs `Microsoft.Graph.Authentication` for the current user if it is not already
 available. It does not install the full Microsoft Graph PowerShell SDK.

@@ -30,6 +30,8 @@ Versioning. Tags use the repository convention `defender-xdr-story-seeder/v<vers
   principals in addition to registrations and blueprints.
 - Report a `404` agent-object check as source-verified absence without claiming that the separately
   indexed Microsoft 365 Agent Registry has already refreshed.
+- Automatically install the Microsoft .NET 8 SDK through WinGet, with Windows elevation and
+  post-install verification, before installing the Agent 365 CLI when the SDK is missing.
 - Preserve the original inventory-only and Defender incident seeding paths for tenants that don't
   meet the Agent 365 CLI, licensing, consent, or service-rollout prerequisites.
 

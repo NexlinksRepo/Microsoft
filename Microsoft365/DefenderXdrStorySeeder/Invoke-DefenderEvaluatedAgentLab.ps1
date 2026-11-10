@@ -55,6 +55,81 @@ function Resolve-TenantIdFromUpn {
     return [string]$Matches.tenant
 }
 
+function Get-SupportedDotNetCommand {
+    $candidates = [System.Collections.Generic.List[string]]::new()
+    $command = Get-Command dotnet -ErrorAction SilentlyContinue
+    if ($null -ne $command -and -not [string]::IsNullOrWhiteSpace([string]$command.Source)) {
+        $candidates.Add([string]$command.Source)
+    }
+    foreach ($candidate in @(
+        (Join-Path $env:ProgramFiles 'dotnet\dotnet.exe')
+        $(if (-not [string]::IsNullOrWhiteSpace(${env:ProgramFiles(x86)})) { Join-Path ${env:ProgramFiles(x86)} 'dotnet\dotnet.exe' })
+    )) {
+        if (-not [string]::IsNullOrWhiteSpace([string]$candidate) -and
+            -not $candidates.Contains([string]$candidate)) {
+            $candidates.Add([string]$candidate)
+        }
+    }
+
+    foreach ($candidate in $candidates) {
+        if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) {
+            continue
+        }
+        $sdkVersions = @(& $candidate --list-sdks 2>$null)
+        $hasSupportedSdk = @($sdkVersions | Where-Object {
+            $_ -match '^(?<major>\d+)\.' -and [int]$Matches.major -ge 8
+        }).Count -gt 0
+        if ($hasSupportedSdk) {
+            return $candidate
+        }
+    }
+    return $null
+}
+
+function Install-DotNet8Sdk {
+    $winget = Get-Command winget -ErrorAction SilentlyContinue
+    if ($null -eq $winget) {
+        throw "The .NET 8 SDK is required and Windows Package Manager was not found. Install it manually with 'winget install --id Microsoft.DotNet.SDK.8 --exact --source winget'."
+    }
+
+    Write-Host 'Installing the Microsoft .NET 8 SDK. Approve the Windows elevation prompt if it appears...' -ForegroundColor Cyan
+    $wingetArguments = @(
+        'install'
+        '--id', 'Microsoft.DotNet.SDK.8'
+        '--exact'
+        '--source', 'winget'
+        '--accept-package-agreements'
+        '--accept-source-agreements'
+        '--silent'
+    )
+    try {
+        $process = Start-Process `
+            -FilePath ([string]$winget.Source) `
+            -ArgumentList $wingetArguments `
+            -Verb RunAs `
+            -WindowStyle Hidden `
+            -Wait `
+            -PassThru
+    }
+    catch {
+        throw "The .NET 8 SDK installation could not be started. Approve the Windows elevation prompt and retry. $($_.Exception.Message)"
+    }
+
+    $machinePath = [Environment]::GetEnvironmentVariable('Path', 'Machine')
+    $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+    $env:Path = @($machinePath, $userPath, $env:Path) -join [IO.Path]::PathSeparator
+    $dotnetPath = Get-SupportedDotNetCommand
+    if ($null -ne $dotnetPath) {
+        Write-Host 'Microsoft .NET 8 SDK installation completed.' -ForegroundColor Green
+        return $dotnetPath
+    }
+
+    if ($process.ExitCode -eq 3010) {
+        throw 'The .NET 8 SDK installation completed and Windows requested a restart. Restart Windows, then rerun the bulk seeder.'
+    }
+    throw "The .NET 8 SDK installation did not produce a usable SDK. WinGet exited with code $($process.ExitCode)."
+}
+
 function Get-Agent365CliCommand {
     param([switch]$AllowInstall)
 
@@ -72,19 +147,16 @@ function Get-Agent365CliCommand {
         throw "The Microsoft Agent 365 CLI is required. Install it with 'dotnet tool install --global Microsoft.Agents.A365.DevTools.Cli' or rerun with -InstallAgent365Cli."
     }
 
-    if ($null -eq (Get-Command dotnet -ErrorAction SilentlyContinue)) {
-        throw 'The Microsoft Agent 365 CLI requires the .NET 8 SDK or later, and dotnet was not found.'
-    }
-    $sdkVersions = @(& dotnet --list-sdks 2>$null)
-    $hasSupportedSdk = @($sdkVersions | Where-Object {
-        $_ -match '^(?<major>\d+)\.' -and [int]$Matches.major -ge 8
-    }).Count -gt 0
-    if (-not $hasSupportedSdk) {
-        throw 'The Microsoft Agent 365 CLI requires the .NET 8 SDK or later. A dotnet host is present, but no supported SDK is installed.'
+    $dotnetPath = Get-SupportedDotNetCommand
+    if ($null -eq $dotnetPath) {
+        if (-not $AllowInstall) {
+            throw "The Microsoft Agent 365 CLI requires the .NET 8 SDK or later. Install it with 'winget install --id Microsoft.DotNet.SDK.8 --exact --source winget' or rerun with -InstallAgent365Cli."
+        }
+        $dotnetPath = Install-DotNet8Sdk
     }
 
     Write-Host 'Installing the Microsoft Agent 365 CLI for the current user...' -ForegroundColor Cyan
-    & dotnet tool install --global Microsoft.Agents.A365.DevTools.Cli
+    & $dotnetPath tool install --global Microsoft.Agents.A365.DevTools.Cli
     if ($LASTEXITCODE -ne 0) {
         throw "Agent 365 CLI installation failed with exit code $LASTEXITCODE."
     }
