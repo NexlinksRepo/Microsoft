@@ -33,8 +33,13 @@ $requiredFiles = @(
     'Invoke-DefenderAgentRegistrationRetry.ps1'
     'Start-DefenderAgentCleanup.ps1'
     'Invoke-DefenderAgentCleanup.ps1'
+    'Start-DefenderEvaluatedAgentLab.ps1'
+    'Invoke-DefenderEvaluatedAgentLab.ps1'
+    'Start-DefenderEvaluatedAgentCleanup.ps1'
+    'Invoke-DefenderEvaluatedAgentCleanup.ps1'
     'Start-DefenderBulkCleanup.ps1'
     'Invoke-DefenderBulkCleanup.ps1'
+    'Clear-DefenderGraphAuthCache.ps1'
     'Build-Release.ps1'
     'README.md'
     'CHANGELOG.md'
@@ -42,6 +47,7 @@ $requiredFiles = @(
     'VERSION'
     'catalog\attack-catalog.json'
     'catalog\ai-agent-catalog.json'
+    'catalog\agent-risk-profiles.json'
     'catalog\endpoint-roster.json'
     'catalog\mailbox-roster.json'
     'docs\ARCHITECTURE.md'
@@ -64,8 +70,13 @@ $scriptFiles = @(
     'Invoke-DefenderAgentRegistrationRetry.ps1'
     'Start-DefenderAgentCleanup.ps1'
     'Invoke-DefenderAgentCleanup.ps1'
+    'Start-DefenderEvaluatedAgentLab.ps1'
+    'Invoke-DefenderEvaluatedAgentLab.ps1'
+    'Start-DefenderEvaluatedAgentCleanup.ps1'
+    'Invoke-DefenderEvaluatedAgentCleanup.ps1'
     'Start-DefenderBulkCleanup.ps1'
     'Invoke-DefenderBulkCleanup.ps1'
+    'Clear-DefenderGraphAuthCache.ps1'
     'Build-Release.ps1'
 )
 foreach ($relativePath in $scriptFiles) {
@@ -84,11 +95,15 @@ Assert-Condition -Condition ($version -match '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?
 
 $seederText = Get-Content -LiteralPath (Join-Path $projectRoot 'Invoke-DefenderBulkSeeder.ps1') -Raw
 $cleanupText = Get-Content -LiteralPath (Join-Path $projectRoot 'Invoke-DefenderBulkCleanup.ps1') -Raw
+$cleanupLauncherText = Get-Content -LiteralPath (Join-Path $projectRoot 'Start-DefenderBulkCleanup.ps1') -Raw
 $launcherText = Get-Content -LiteralPath (Join-Path $projectRoot 'Start-DefenderBulkSeed.ps1') -Raw
 $authenticationText = Get-Content -LiteralPath (Join-Path $projectRoot 'DefenderXdrStorySeeder.Authentication.ps1') -Raw
 $agentHelperText = Get-Content -LiteralPath (Join-Path $projectRoot 'DefenderXdrStorySeeder.Agent365.ps1') -Raw
 $registrationRetryText = Get-Content -LiteralPath (Join-Path $projectRoot 'Invoke-DefenderAgentRegistrationRetry.ps1') -Raw
 $agentCleanupText = Get-Content -LiteralPath (Join-Path $projectRoot 'Invoke-DefenderAgentCleanup.ps1') -Raw
+$evaluatedAgentText = Get-Content -LiteralPath (Join-Path $projectRoot 'Invoke-DefenderEvaluatedAgentLab.ps1') -Raw
+$evaluatedCleanupText = Get-Content -LiteralPath (Join-Path $projectRoot 'Invoke-DefenderEvaluatedAgentCleanup.ps1') -Raw
+$graphCacheCleanupText = Get-Content -LiteralPath (Join-Path $projectRoot 'Clear-DefenderGraphAuthCache.ps1') -Raw
 $readmeText = Get-Content -LiteralPath (Join-Path $projectRoot 'README.md') -Raw
 $changelogText = Get-Content -LiteralPath (Join-Path $projectRoot 'CHANGELOG.md') -Raw
 Assert-Condition -Condition ($seederText.Contains("`$ProjectVersion = '$version'")) -Message 'Seeder version matches VERSION'
@@ -96,11 +111,23 @@ Assert-Condition -Condition ($cleanupText.Contains("`$ProjectVersion = '$version
 Assert-Condition -Condition ($registrationRetryText.Contains("`$ProjectVersion = '$version'")) -Message 'Registration retry version matches VERSION'
 Assert-Condition -Condition ($agentCleanupText.Contains("`$ProjectVersion = '$version'")) -Message 'Agent-only cleanup version matches VERSION'
 Assert-Condition -Condition ($agentHelperText.Contains("`$script:AgentSeederVersion = '$version'")) -Message 'Agent helper version matches VERSION'
+Assert-Condition -Condition ($evaluatedAgentText.Contains("`$ProjectVersion = '$version'")) -Message 'Evaluated-agent lab version matches VERSION'
+Assert-Condition -Condition ($evaluatedCleanupText.Contains("`$ProjectVersion = '$version'")) -Message 'Evaluated-agent cleanup version matches VERSION'
 Assert-Condition -Condition ($readmeText.Contains("Current version: **$version**")) -Message 'README version matches VERSION'
 Assert-Condition -Condition ($changelogText.Contains("## $version")) -Message 'Changelog contains the current version'
 Assert-Condition -Condition ($launcherText.Contains("How many incidents should be created?")) -Message 'Launcher prompts for incident count'
-Assert-Condition -Condition ($launcherText.Contains("Create dormant demo AI agents")) -Message 'Launcher prompts for optional demo agents'
+Assert-Condition -Condition ($launcherText.Contains("Agent mode: [E]valuated, [I]nventory-only, or [N]one? [E]")) -Message 'Bulk launcher defaults to the evaluated-agent workflow'
+Assert-Condition -Condition ($launcherText.Contains('Invoke-DefenderEvaluatedAgentLab.ps1')) -Message 'Bulk launcher provisions evaluated agents before incidents'
+Assert-Condition -Condition ($launcherText.Contains('-EvaluatedAgentManifestPath $EvaluatedAgentManifestPath')) -Message 'Bulk launcher passes the evaluated-agent manifest into incident seeding'
 Assert-Condition -Condition ($launcherText.Contains("`$PSBoundParameters.ContainsKey('IncidentCount')")) -Message 'IncidentCount bypasses the interactive count prompt'
+Assert-Condition -Condition ($launcherText.Contains('Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned')) -Message 'Bulk launcher uses only a process-scoped RemoteSigned policy for packaged scripts'
+Assert-Condition -Condition ($launcherText.Contains("Get-ChildItem -LiteralPath `$PSScriptRoot -Filter '*.ps1' -File")) -Message 'Bulk launcher unblocks every packaged PowerShell script before nested execution'
+Assert-Condition -Condition ($cleanupLauncherText.Contains('Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned')) -Message 'Cleanup launcher uses the same process-scoped packaged-script preparation'
+Assert-Condition -Condition (-not $launcherText.Contains('ExecutionPolicy Bypass')) -Message 'Bulk launcher never bypasses PowerShell execution policy'
+Assert-Condition -Condition ($graphCacheCleanupText.Contains('.mg\mg.authrecord*.json')) -Message 'Graph cache cleanup targets Graph authentication records'
+Assert-Condition -Condition ($graphCacheCleanupText.Contains('.IdentityService\mg.msal.cache.cae')) -Message 'Graph cache cleanup targets the CAE token cache'
+Assert-Condition -Condition ($graphCacheCleanupText.Contains('.IdentityService\mg.msal.cache.nocae')) -Message 'Graph cache cleanup targets the non-CAE token cache'
+Assert-Condition -Condition (-not $graphCacheCleanupText.Contains('-Recurse')) -Message 'Graph cache cleanup is restricted to explicit cache files'
 
 $catalog = Get-Content -LiteralPath (Join-Path $projectRoot 'catalog\attack-catalog.json') -Raw | ConvertFrom-Json -Depth 20
 $attacks = @($catalog.attacks)
@@ -133,6 +160,12 @@ $agents = @($aiCatalog.agents)
 Assert-Condition -Condition ($agents.Count -eq 10) -Message 'AI-agent catalog contains ten varied demo profiles'
 Assert-Condition -Condition (@($agents.authorityProfile | Sort-Object -Unique).Count -eq 3) -Message 'AI-agent catalog covers low, medium, and elevated profiles'
 Assert-Condition -Condition (@($agents.executionMode | Sort-Object -Unique).Count -eq 2) -Message 'AI-agent catalog covers OBO and service-to-service modes'
+
+$riskCatalog = Get-Content -LiteralPath (Join-Path $projectRoot 'catalog\agent-risk-profiles.json') -Raw | ConvertFrom-Json -Depth 20
+$riskProfiles = @($riskCatalog.profiles)
+Assert-Condition -Condition (($riskProfiles.id -join ',') -eq 'low,medium,high') -Message 'Evaluated-agent catalog contains low, medium, and high targets'
+Assert-Condition -Condition (@($riskProfiles | Where-Object { @($_.instructions).Count -eq 0 }).Count -eq 0) -Message 'Every evaluated-agent profile includes instructions'
+Assert-Condition -Condition (@($riskProfiles | Where-Object { $_.id -in @('medium', 'high') -and @($_.mcpServers).Count -eq 0 }).Count -eq 0) -Message 'Medium and high evaluated-agent profiles include governed MCP tooling'
 
 $endpointCatalog = Get-Content -LiteralPath (Join-Path $projectRoot 'catalog\endpoint-roster.json') -Raw | ConvertFrom-Json -Depth 20
 $endpoints = @($endpointCatalog.endpoints)
@@ -179,7 +212,7 @@ Assert-Condition -Condition ($agentHelperText.Contains('Get-AgentGraphErrorInfo'
 Assert-Condition -Condition ($registrationRetryText.Contains('Register-DemoAiAgent')) -Message 'Registration-only retry reuses existing agent identities'
 Assert-Condition -Condition (-not $registrationRetryText.Contains('New-DemoAiAgent')) -Message 'Registration-only retry cannot create duplicate agent identities'
 Assert-Condition -Condition ($registrationRetryText.Contains("'AgentRegistration.ReadWrite.All' -notin")) -Message 'Registration retry verifies the delegated scope is present'
-Assert-Condition -Condition ($cleanupText.Contains('agentRegistrations/$registrationId')) -Message 'Cleanup removes only recorded registry IDs'
+Assert-Condition -Condition ($cleanupText.Contains('copilot/agentRegistrations/$([uri]::EscapeDataString([string]$agent.agentRegistrationId))')) -Message 'Cleanup removes only recorded registry IDs'
 Assert-Condition -Condition ($cleanupText.Contains('microsoft.graph.agentIdentityBlueprint')) -Message 'Cleanup uses blueprint cascade deletion'
 foreach ($fragment in @(
     'copilot/agentRegistrations/'
@@ -198,6 +231,31 @@ Assert-Condition -Condition ($agentCleanupText.Contains("PSObject.Properties['@o
 Assert-Condition -Condition ($agentCleanupText.Contains("result = 'alreadyAbsent'")) -Message 'Agent-only cleanup is repeat-safe for absent objects'
 Assert-Condition -Condition (-not $agentCleanupText.Contains('/security/alerts')) -Message 'Agent-only cleanup does not access Defender alerts'
 Assert-Condition -Condition (-not $agentCleanupText.Contains('/security/incidents')) -Message 'Agent-only cleanup does not access Defender incidents'
+Assert-Condition -Condition ($evaluatedAgentText.Contains("@('setup', 'all'")) -Message 'Evaluated-agent lab delegates supported provisioning to the Agent 365 CLI'
+Assert-Condition -Condition ($evaluatedAgentText.Contains("@('setup', 'permissions', 'mcp')")) -Message 'Evaluated-agent lab applies MCP permissions through the Agent 365 CLI'
+Assert-Condition -Condition ($evaluatedAgentText.Contains('Microsoft.DotNet.SDK.8')) -Message 'Evaluated-agent launcher can install the required .NET 8 SDK'
+Assert-Condition -Condition ($evaluatedAgentText.Contains("'--exact'")) -Message 'Automatic .NET installation selects the exact Microsoft WinGet package'
+Assert-Condition -Condition ($evaluatedAgentText.Contains('-Verb RunAs')) -Message 'Automatic .NET installation requests Windows elevation'
+Assert-Condition -Condition ($evaluatedAgentText.Contains('$installOutput = @(& $dotnetPath tool $toolVerb')) -Message 'Agent 365 CLI installer output is captured instead of contaminating the returned executable path'
+Assert-Condition -Condition ($evaluatedAgentText.Contains('return [string]$command.Source')) -Message 'Agent 365 CLI discovery returns exactly one string path'
+Assert-Condition -Condition ($evaluatedAgentText.Contains("@('setup', 'requirements')")) -Message 'Evaluated-agent lab validates Agent 365 requirements before provisioning'
+Assert-Condition -Condition ($evaluatedAgentText.Contains("prerequisiteStatus = 'pending'")) -Message 'Evaluated-agent manifest records prerequisite status and diagnostics'
+Assert-Condition -Condition ($evaluatedAgentText.Contains("@('setup', 'all', '--skip-requirements'")) -Message 'Per-agent setup reuses the successful prerequisite preflight'
+Assert-Condition -Condition ($evaluatedAgentText.Contains('Write-Host $line')) -Message 'Agent 365 CLI output streams live to the operator'
+Assert-Condition -Condition ($evaluatedAgentText.Contains("GetEnvironmentVariable('Path', 'User')")) -Message 'Agent 365 CLI discovery refreshes the current-user PATH'
+Assert-Condition -Condition ($evaluatedAgentText.Contains("riskRatingGuaranteed = `$false")) -Message 'Evaluated-agent manifest does not claim a guaranteed Defender rating'
+Assert-Condition -Condition ($evaluatedCleanupText.Contains("@('cleanup', 'instance')")) -Message 'Evaluated-agent cleanup removes the recorded instance through the Agent 365 CLI'
+Assert-Condition -Condition ($evaluatedCleanupText.Contains("@('cleanup', 'blueprint')")) -Message 'Evaluated-agent cleanup removes the recorded blueprint through the Agent 365 CLI'
+Assert-Condition -Condition (-not $evaluatedCleanupText.Contains("@('cleanup', 'azure')")) -Message 'Evaluated-agent cleanup never removes Azure resources'
+Assert-Condition -Condition (-not $evaluatedCleanupText.Contains('/security/alerts')) -Message 'Evaluated-agent cleanup does not access Defender alerts'
+Assert-Condition -Condition (-not $evaluatedCleanupText.Contains('/security/incidents')) -Message 'Evaluated-agent cleanup does not access Defender incidents'
+Assert-Condition -Condition ($cleanupText.Contains("creationStatus -eq 'evaluatedConfiguration'")) -Message 'Graph cleanup skips evaluated agents owned by Agent 365 CLI cleanup'
+Assert-Condition -Condition ($cleanupLauncherText.Contains('Invoke-DefenderEvaluatedAgentCleanup.ps1')) -Message 'Bulk cleanup launcher includes evaluated-agent cleanup'
+Assert-Condition -Condition ($cleanupLauncherText.Contains('-SeedManifestPath $SeedManifestPath')) -Message 'Bulk cleanup launcher accepts an exact historical seed manifest'
+Assert-Condition -Condition ($cleanupText.Contains('Get-SeedManifestScope')) -Message 'Cleanup recovers incident and alert IDs from the selected seed manifest'
+Assert-Condition -Condition ($cleanupText.Contains("type = 'agentIdentity'")) -Message 'Bulk cleanup explicitly removes recorded agent identities'
+Assert-Condition -Condition ($cleanupText.Contains("type = 'agentIdentityBlueprintPrincipal'")) -Message 'Bulk cleanup explicitly removes recorded blueprint principals'
+Assert-Condition -Condition ($cleanupText.Contains("result = 'verifiedAbsent'")) -Message 'Cleanup distinguishes source-verified absence from a completed portal refresh'
 
 $agentCleanupTokens = $null
 $agentCleanupParseErrors = $null
@@ -312,6 +370,65 @@ $cycledAgentDryRun = & (Join-Path $projectRoot 'Invoke-DefenderBulkSeeder.ps1') 
 $cycledAgentPlan = @($cycledAgentDryRun.Plan)
 Assert-Condition -Condition ((@($cycledAgentPlan.AgentPoolPosition) -join ',') -eq '1,2,3,1,2,3,1,2') -Message 'AI incidents cycle through a smaller selected agent pool'
 Assert-Condition -Condition ((@($cycledAgentPlan.AgentCatalogId) -join ',') -eq '1,2,3,1,2,3,1,2') -Message 'Cycled AI incidents retain the matching agent story profile'
+
+$evaluatedDryRun = & (Join-Path $projectRoot 'Invoke-DefenderEvaluatedAgentLab.ps1') `
+    -GlobalAdminUpn 'offline.test@contoso.example' `
+    -AgentCount 7 `
+    -Confirm:$false
+$evaluatedPlan = @($evaluatedDryRun.Plan)
+Assert-Condition -Condition ($evaluatedDryRun.Mode -eq 'DryRun') -Message 'Evaluated-agent planning is non-mutating without Execute'
+Assert-Condition -Condition (($evaluatedPlan.TargetRisk -join ',') -eq 'low,medium,high,low,medium,high,low') -Message 'Evaluated-agent plan cycles through requested risk profiles'
+Assert-Condition -Condition (@($evaluatedPlan | Where-Object { $_.Name -notlike '[[]MXDR Demo]*' }).Count -eq 0) -Message 'Every evaluated-agent name uses the exact MXDR Demo prefix'
+
+$externalAgentManifestPath = [System.IO.Path]::GetTempFileName()
+try {
+    [ordered]@{
+        schemaVersion = 1
+        projectVersion = $version
+        globalAdminUpn = 'offline.test@contoso.example'
+        tenantId = '11111111-1111-1111-1111-111111111111'
+        agents = @(
+            foreach ($sequence in 1..3) {
+                [ordered]@{
+                    sequence = $sequence
+                    displayName = "[MXDR Demo] Evaluated Agent $sequence"
+                    description = 'Offline evaluated-agent fixture'
+                    targetRisk = @('low', 'medium', 'high')[$sequence - 1]
+                    authMode = if ($sequence -eq 3) { 'both' } else { 'obo' }
+                    delegatedScopes = @('User.Read')
+                    mcpServers = if ($sequence -gt 1) { @('mcp_MailTools') } else { @() }
+                    mcpStatus = if ($sequence -gt 1) { 'configuredAndConsented' } else { 'notRequested' }
+                    runtimeStatus = 'notDeployedBySeeder'
+                    setupStatus = 'created'
+                    permissionStatus = 'granted'
+                    status = 'created'
+                    safeGeneratedIds = [ordered]@{
+                        agentBlueprintId = "00000000-0000-0000-0000-00000000000$sequence"
+                        agentIdentityId = "10000000-0000-0000-0000-00000000000$sequence"
+                        agentRegistrationId = "20000000-0000-0000-0000-00000000000$sequence"
+                    }
+                    errors = @()
+                }
+            }
+        )
+    } | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $externalAgentManifestPath -Encoding utf8
+
+    $integratedDryRun = & (Join-Path $projectRoot 'Invoke-DefenderBulkSeeder.ps1') `
+        -GlobalAdminUpn 'offline.test@contoso.example' `
+        -IncidentCount 6 `
+        -CreateDemoAiAgents `
+        -DemoAgentCount 10 `
+        -AiIncidentCount 6 `
+        -EvaluatedAgentManifestPath $externalAgentManifestPath `
+        -Confirm:$false | Where-Object { $_ -is [psobject] -and $_.PSObject.Properties.Name -contains 'Mode' } | Select-Object -Last 1
+    $integratedPlan = @($integratedDryRun.Plan)
+    Assert-Condition -Condition ($integratedDryRun.AgentMode -eq 'evaluated') -Message 'Bulk seeder recognizes the evaluated-agent manifest mode'
+    Assert-Condition -Condition ([int]$integratedDryRun.DemoAgentCount -eq 3) -Message 'Bulk seeder uses the completed evaluated-agent count from the manifest'
+    Assert-Condition -Condition ((@($integratedPlan.AgentPoolPosition) -join ',') -eq '1,2,3,1,2,3') -Message 'AI incidents cycle through the imported evaluated-agent pool'
+}
+finally {
+    Remove-Item -LiteralPath $externalAgentManifestPath -Force -ErrorAction SilentlyContinue
+}
 
 if ($failures.Count -gt 0) {
     throw "Offline validation failed with $($failures.Count) error(s): $($failures -join '; ')"

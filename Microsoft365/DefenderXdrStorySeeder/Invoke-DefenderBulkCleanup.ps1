@@ -30,7 +30,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-$ProjectVersion = '0.2.4-beta'
+$ProjectVersion = '0.3.1-beta'
 
 . (Join-Path $PSScriptRoot 'DefenderXdrStorySeeder.Authentication.ps1')
 
@@ -78,6 +78,54 @@ function Invoke-GraphRequestWithRetry {
             $delaySeconds = [math]::Pow(2, $attempt - 1)
             Write-Warning "Graph request failed on attempt $attempt. Retrying in $delaySeconds second(s). $($_.Exception.Message)"
             Start-Sleep -Seconds $delaySeconds
+        }
+    }
+}
+
+function Get-GraphStatusCode {
+    param([Parameter(Mandatory)]$ErrorRecord)
+
+    try {
+        if ($null -ne $ErrorRecord.Exception.Response.StatusCode) {
+            return [int]$ErrorRecord.Exception.Response.StatusCode
+        }
+    }
+    catch {
+        return $null
+    }
+    return $null
+}
+
+function Invoke-AgentObjectDelete {
+    param(
+        [Parameter(Mandatory)][string]$Type,
+        [Parameter(Mandatory)][string]$Id,
+        [Parameter(Mandatory)][string]$Uri,
+        [ValidateRange(1, 5)][int]$MaximumAttempts = 3
+    )
+
+    for ($attempt = 1; $attempt -le $MaximumAttempts; $attempt++) {
+        try {
+            Invoke-MgGraphRequest -Method DELETE -Uri $Uri -ErrorAction Stop | Out-Null
+            return [ordered]@{ type = $Type; id = $Id; result = 'deleted'; statusCode = 204; error = $null }
+        }
+        catch {
+            $statusCode = Get-GraphStatusCode -ErrorRecord $_
+            if ($statusCode -eq 404) {
+                return [ordered]@{ type = $Type; id = $Id; result = 'verifiedAbsent'; statusCode = 404; error = $null }
+            }
+            $retryable = $statusCode -eq 429 -or ($null -ne $statusCode -and $statusCode -ge 500)
+            if ($retryable -and $attempt -lt $MaximumAttempts) {
+                $delaySeconds = [math]::Pow(2, $attempt - 1)
+                Write-Warning "$Type $Id deletion returned HTTP $statusCode. Retrying in $delaySeconds second(s)."
+                Start-Sleep -Seconds $delaySeconds
+                continue
+            }
+            $responseBody = [string]$_.ErrorDetails.Message
+            if ([string]::IsNullOrWhiteSpace($responseBody)) {
+                $responseBody = [string]$_.Exception.Message
+            }
+            return [ordered]@{ type = $Type; id = $Id; result = 'failed'; statusCode = $statusCode; error = $responseBody }
         }
     }
 }
@@ -221,6 +269,12 @@ function Get-GeneratedAgentRecords {
                 continue
             }
             foreach ($agent in @($seedManifest.agents)) {
+                # Evaluated configurations are removed through the Agent 365 CLI so its
+                # generated identity, registration, permission, and local-secret state
+                # remain coordinated. The bulk cleanup launcher calls that dedicated path.
+                if ([string]$agent.creationStatus -eq 'evaluatedConfiguration') {
+                    continue
+                }
                 $key = if (-not [string]::IsNullOrWhiteSpace([string]$agent.blueprintId)) {
                     [string]$agent.blueprintId
                 }
@@ -245,6 +299,51 @@ function Get-GeneratedAgentRecords {
         }
     }
     return @($recordsByBlueprint.Values)
+}
+
+function Get-SeedManifestScope {
+    param(
+        [AllowEmptyString()][string]$ManifestPath,
+        [Parameter(Mandatory)][string]$ExpectedAdminUpn
+    )
+
+    $scope = [ordered]@{
+        manifestPath = $null
+        runId = $null
+        incidentIds = @()
+        alertIds = @()
+    }
+    if ([string]::IsNullOrWhiteSpace($ManifestPath)) {
+        return $scope
+    }
+
+    $resolvedPath = (Resolve-Path -LiteralPath $ManifestPath).Path
+    $seedManifest = Get-Content -LiteralPath $resolvedPath -Raw | ConvertFrom-Json -AsHashtable -Depth 50
+    if (-not $seedManifest.ContainsKey('globalAdminUpn') -or [string]$seedManifest.globalAdminUpn -ine $ExpectedAdminUpn) {
+        throw "Seed manifest '$resolvedPath' does not belong to '$ExpectedAdminUpn'."
+    }
+    if (-not $seedManifest.ContainsKey('incidents')) {
+        throw "Seed manifest '$resolvedPath' does not contain incident records."
+    }
+
+    $incidentIds = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    $alertIds = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($incident in @($seedManifest.incidents)) {
+        if (-not [string]::IsNullOrWhiteSpace([string]$incident.incidentId)) {
+            [void]$incidentIds.Add([string]$incident.incidentId)
+        }
+        foreach ($alert in @($incident.alerts)) {
+            if (-not [string]::IsNullOrWhiteSpace([string]$alert.alertId)) {
+                [void]$alertIds.Add([string]$alert.alertId)
+            }
+        }
+    }
+
+    $scope.manifestPath = $resolvedPath
+    $scope.runId = if ($seedManifest.ContainsKey('runId')) { [string]$seedManifest.runId } else { $null }
+    $scope.incidentIds = @($incidentIds)
+    $scope.alertIds = @($alertIds)
+    return $scope
 }
 
 function Get-NormalizedAlertTitle {
@@ -294,11 +393,21 @@ try {
     $context = Connect-CleanupGraph -LoginHint $GlobalAdminUpn -DeviceCode:$UseDeviceCode
     $knownTitles = Get-SeededAlertTitles -Path $CatalogPath -AiPath $AiAgentCatalogPath -AddLegacyPoc $IncludeLegacyPoc
     $generatedAgentRecords = if ($SkipDemoAgentCleanup) { @() } else { @(Get-GeneratedAgentRecords -Directory $OutputDirectory -ManifestPath $SeedManifestPath) }
+    $seedScope = Get-SeedManifestScope -ManifestPath $SeedManifestPath -ExpectedAdminUpn $GlobalAdminUpn
 
     Write-Host 'Reading active Defender XDR alerts...' -ForegroundColor Cyan
     $activeAlerts = @(Get-ActiveAlerts)
+    $manifestAlertIds = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($manifestAlertId in @($seedScope.alertIds)) {
+        [void]$manifestAlertIds.Add([string]$manifestAlertId)
+    }
     $matchedAlerts = @($activeAlerts | Where-Object {
-        Test-IsSeederAlert -Alert $_ -KnownTitles $knownTitles -IncludeAllManual:$AllManualAlerts
+        if (-not [string]::IsNullOrWhiteSpace([string]$seedScope.manifestPath)) {
+            $manifestAlertIds.Contains([string]$_.id)
+        }
+        else {
+            Test-IsSeederAlert -Alert $_ -KnownTitles $knownTitles -IncludeAllManual:$AllManualAlerts
+        }
     })
 
     $matchedAlertIds = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
@@ -308,6 +417,9 @@ try {
         if (-not [string]::IsNullOrWhiteSpace([string]$alert.incidentId)) {
             [void]$targetIncidentIds.Add([string]$alert.incidentId)
         }
+    }
+    foreach ($manifestIncidentId in @($seedScope.incidentIds)) {
+        [void]$targetIncidentIds.Add([string]$manifestIncidentId)
     }
 
     $protectedIncidentIds = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
@@ -348,8 +460,15 @@ try {
         failedIncidents            = @()
         skippedIncidentIds         = @()
         generatedAgentRecordCount  = $generatedAgentRecords.Count
+        sourceSeedManifestPath     = $seedScope.manifestPath
+        sourceSeedRunId            = $seedScope.runId
+        manifestIncidentCount      = @($seedScope.incidentIds).Count
+        manifestAlertCount         = @($seedScope.alertIds).Count
         deletedAgentRegistrationIds = @()
         deletedBlueprintIds        = @()
+        deletedAgentIdentityIds    = @()
+        deletedBlueprintPrincipalIds = @()
+        verifiedAbsentAgentObjects = @()
         failedAgentObjects         = @()
     }
     Save-CleanupManifest -Manifest $manifest -Path $manifestPath
@@ -359,7 +478,7 @@ try {
         Write-Warning "$($protectedIncidentIdList.Count) incident(s) contain other active alerts and will not be closed. Matching alerts in those incidents can still be resolved safely."
     }
 
-    $hasCleanupWork = $matchedAlerts.Count -gt 0 -or $generatedAgentRecords.Count -gt 0
+    $hasCleanupWork = $matchedAlerts.Count -gt 0 -or $targetIncidentIds.Count -gt 0 -or $generatedAgentRecords.Count -gt 0
     if (-not $hasCleanupWork) {
         Write-Host 'No active seeded alerts or recorded demo-agent objects were found. Nothing needs cleanup.' -ForegroundColor Green
     }
@@ -368,7 +487,7 @@ try {
     }
     elseif ($PSCmdlet.ShouldProcess(
         "Microsoft Defender tenant $($context.TenantId) selected by $GlobalAdminUpn",
-        "Resolve $($matchedAlerts.Count) seeded alerts and $($closableIncidentIds.Count) safe incidents; remove $($generatedAgentRecords.Count) recorded demo-agent identity set(s)"
+        "Resolve $($matchedAlerts.Count) active seeded alerts and $($closableIncidentIds.Count) safe incidents; remove $($generatedAgentRecords.Count) recorded demo-agent registration, blueprint, identity, and principal set(s)"
     )) {
         $manifest.executionStarted = $true
         Save-CleanupManifest -Manifest $manifest -Path $manifestPath
@@ -454,26 +573,33 @@ try {
         foreach ($agent in $generatedAgentRecords) {
             $agentNumber++
             Write-Progress -Activity 'Removing recorded demo AI agents' -Status "$agentNumber of $($generatedAgentRecords.Count): $($agent.displayName)" -PercentComplete (($agentNumber / $generatedAgentRecords.Count) * 100)
-            if (-not [string]::IsNullOrWhiteSpace([string]$agent.agentRegistrationId)) {
-                try {
-                    $registrationId = [uri]::EscapeDataString([string]$agent.agentRegistrationId)
-                    Invoke-GraphRequestWithRetry -Method DELETE -Uri "https://graph.microsoft.com/beta/copilot/agentRegistrations/$registrationId" -Body $null | Out-Null
-                    $manifest.deletedAgentRegistrationIds = @($manifest.deletedAgentRegistrationIds) + [string]$agent.agentRegistrationId
+            $targets = @(
+                if (-not [string]::IsNullOrWhiteSpace([string]$agent.agentRegistrationId)) {
+                    [pscustomobject]@{ type = 'agentRegistration'; id = [string]$agent.agentRegistrationId; uri = "https://graph.microsoft.com/beta/copilot/agentRegistrations/$([uri]::EscapeDataString([string]$agent.agentRegistrationId))"; resultField = 'deletedAgentRegistrationIds' }
                 }
-                catch {
-                    $manifest.failedAgentObjects = @($manifest.failedAgentObjects) + [ordered]@{ type = 'agentRegistration'; id = [string]$agent.agentRegistrationId; displayName = [string]$agent.displayName; error = $_.Exception.Message }
-                    Write-Warning "Could not remove agent registration '$($agent.displayName)': $($_.Exception.Message)"
+                if (-not [string]::IsNullOrWhiteSpace([string]$agent.blueprintId)) {
+                    [pscustomobject]@{ type = 'agentIdentityBlueprint'; id = [string]$agent.blueprintId; uri = "https://graph.microsoft.com/v1.0/applications/$([uri]::EscapeDataString([string]$agent.blueprintId))/microsoft.graph.agentIdentityBlueprint"; resultField = 'deletedBlueprintIds' }
                 }
-            }
-            if (-not [string]::IsNullOrWhiteSpace([string]$agent.blueprintId)) {
-                try {
-                    $blueprintId = [uri]::EscapeDataString([string]$agent.blueprintId)
-                    Invoke-GraphRequestWithRetry -Method DELETE -Uri "https://graph.microsoft.com/v1.0/applications/$blueprintId/microsoft.graph.agentIdentityBlueprint" -Body $null | Out-Null
-                    $manifest.deletedBlueprintIds = @($manifest.deletedBlueprintIds) + [string]$agent.blueprintId
+                if (-not [string]::IsNullOrWhiteSpace([string]$agent.agentIdentityId)) {
+                    [pscustomobject]@{ type = 'agentIdentity'; id = [string]$agent.agentIdentityId; uri = "https://graph.microsoft.com/v1.0/servicePrincipals/$([uri]::EscapeDataString([string]$agent.agentIdentityId))/microsoft.graph.agentIdentity"; resultField = 'deletedAgentIdentityIds' }
                 }
-                catch {
-                    $manifest.failedAgentObjects = @($manifest.failedAgentObjects) + [ordered]@{ type = 'agentIdentityBlueprint'; id = [string]$agent.blueprintId; displayName = [string]$agent.displayName; error = $_.Exception.Message }
-                    Write-Warning "Could not remove agent blueprint '$($agent.displayName)': $($_.Exception.Message)"
+                if (-not [string]::IsNullOrWhiteSpace([string]$agent.blueprintPrincipalId)) {
+                    [pscustomobject]@{ type = 'agentIdentityBlueprintPrincipal'; id = [string]$agent.blueprintPrincipalId; uri = "https://graph.microsoft.com/v1.0/servicePrincipals/$([uri]::EscapeDataString([string]$agent.blueprintPrincipalId))/microsoft.graph.agentIdentityBlueprintPrincipal"; resultField = 'deletedBlueprintPrincipalIds' }
+                }
+            )
+            foreach ($target in $targets) {
+                $operation = Invoke-AgentObjectDelete -Type $target.type -Id $target.id -Uri $target.uri
+                $operation['displayName'] = [string]$agent.displayName
+                if ([string]$operation.result -eq 'deleted') {
+                    $fieldName = [string]$target.resultField
+                    $manifest[$fieldName] = @($manifest[$fieldName]) + [string]$target.id
+                }
+                elseif ([string]$operation.result -eq 'verifiedAbsent') {
+                    $manifest.verifiedAbsentAgentObjects = @($manifest.verifiedAbsentAgentObjects) + $operation
+                }
+                else {
+                    $manifest.failedAgentObjects = @($manifest.failedAgentObjects) + $operation
+                    Write-Warning "$($target.type) '$($agent.displayName)' could not be deleted. HTTP $($operation.statusCode): $($operation.error)"
                 }
             }
             Save-CleanupManifest -Manifest $manifest -Path $manifestPath
@@ -508,7 +634,10 @@ if ($null -ne $manifest) {
         Write-Warning "Cleanup completed with $failedCount failure(s). Review the manifest: $manifestPath"
     }
     elseif ($manifest.executionStarted) {
-        Write-Host "Resolved $(@($manifest.resolvedAlertIds).Count) alerts, closed $(@($manifest.resolvedIncidentIds).Count) incidents, removed $(@($manifest.deletedAgentRegistrationIds).Count) registrations, and deleted $(@($manifest.deletedBlueprintIds).Count) blueprints." -ForegroundColor Green
+        Write-Host "Resolved $(@($manifest.resolvedAlertIds).Count) active alerts, closed $(@($manifest.resolvedIncidentIds).Count) incidents, and deleted $(@($manifest.deletedAgentRegistrationIds).Count + @($manifest.deletedBlueprintIds).Count + @($manifest.deletedAgentIdentityIds).Count + @($manifest.deletedBlueprintPrincipalIds).Count) agent objects." -ForegroundColor Green
+        if (@($manifest.verifiedAbsentAgentObjects).Count -gt 0) {
+            Write-Host "$(@($manifest.verifiedAbsentAgentObjects).Count) recorded agent object(s) were verified absent at their source endpoint. The Microsoft 365 Agent Registry is separately indexed and can take time to refresh after source deletion." -ForegroundColor Yellow
+        }
     }
     Write-Host "Cleanup manifest: $manifestPath"
 
@@ -522,6 +651,9 @@ if ($null -ne $manifest) {
         ProtectedIncidents      = @($manifest.protectedIncidentIds).Count
         RemovedAgentRegistrations = @($manifest.deletedAgentRegistrationIds).Count
         DeletedAgentBlueprints  = @($manifest.deletedBlueprintIds).Count
+        DeletedAgentIdentities  = @($manifest.deletedAgentIdentityIds).Count
+        DeletedBlueprintPrincipals = @($manifest.deletedBlueprintPrincipalIds).Count
+        VerifiedAbsentAgentObjects = @($manifest.verifiedAbsentAgentObjects).Count
         FailedOperations        = $failedCount
         ManifestPath            = $manifestPath
     }

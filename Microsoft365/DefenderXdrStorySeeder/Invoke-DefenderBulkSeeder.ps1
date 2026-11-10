@@ -39,12 +39,14 @@ param(
 
     [string]$ResumeManifestPath,
 
+    [string]$EvaluatedAgentManifestPath,
+
     [string]$OutputDirectory = (Join-Path $PSScriptRoot 'artifacts')
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-$ProjectVersion = '0.2.4-beta'
+$ProjectVersion = '0.3.1-beta'
 
 . (Join-Path $PSScriptRoot 'DefenderXdrStorySeeder.Agent365.ps1')
 . (Join-Path $PSScriptRoot 'DefenderXdrStorySeeder.Authentication.ps1')
@@ -595,6 +597,78 @@ function Save-RunManifest {
     $Manifest | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $Path -Encoding utf8
 }
 
+function ConvertFrom-EvaluatedAgentManifest {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][string]$ExpectedAdminUpn,
+        [Parameter(Mandatory)][object[]]$AgentDefinitions
+    )
+
+    $resolvedPath = (Resolve-Path -LiteralPath $Path -ErrorAction Stop).Path
+    $source = Get-Content -LiteralPath $resolvedPath -Raw | ConvertFrom-Json -AsHashtable -Depth 50
+    if ([int]$source.schemaVersion -ne 1 -or -not $source.ContainsKey('agents')) {
+        throw "'$resolvedPath' is not a supported evaluated-agent lab manifest."
+    }
+    if ([string]$source.globalAdminUpn -ine $ExpectedAdminUpn) {
+        throw "Evaluated-agent manifest '$resolvedPath' belongs to '$([string]$source.globalAdminUpn)', not '$ExpectedAdminUpn'."
+    }
+
+    $records = @(
+        foreach ($agent in @($source.agents)) {
+            if ([string]$agent.status -notin @('created', 'createdWithWarnings')) {
+                continue
+            }
+            $sequence = [int]$agent.sequence
+            $definition = $AgentDefinitions[(($sequence - 1) % $AgentDefinitions.Count)]
+            $ids = if ($agent.ContainsKey('safeGeneratedIds') -and $agent.safeGeneratedIds -is [System.Collections.IDictionary]) {
+                $agent.safeGeneratedIds
+            }
+            else {
+                [ordered]@{}
+            }
+            [ordered]@{
+                sequence = $sequence
+                catalogId = [int]$definition.id
+                displayName = [string]$agent.displayName
+                description = [string]$agent.description
+                authorityProfile = [string]$agent.targetRisk
+                targetRiskIsAdvisory = $true
+                executionMode = [string]$agent.authMode
+                declaredPermissions = @($agent.delegatedScopes)
+                credentialsCreated = $true
+                permissionGrantsCreated = if ([string]$agent.permissionStatus -eq 'granted') { @($agent.delegatedScopes) } else { @() }
+                mcpServers = @($agent.mcpServers)
+                mcpStatus = [string]$agent.mcpStatus
+                runtimeStatus = [string]$agent.runtimeStatus
+                blueprintId = if ($ids.ContainsKey('agentBlueprintId')) { [string]$ids.agentBlueprintId } else { $null }
+                blueprintAppId = if ($ids.ContainsKey('agentBlueprintAppId')) { [string]$ids.agentBlueprintAppId } else { $null }
+                blueprintPrincipalId = if ($ids.ContainsKey('servicePrincipalId')) { [string]$ids.servicePrincipalId } else { $null }
+                agentIdentityId = if ($ids.ContainsKey('agentIdentityId')) { [string]$ids.agentIdentityId } else { $null }
+                agentIdentityAppId = if ($ids.ContainsKey('agentIdentityAppId')) { [string]$ids.agentIdentityAppId } else { $null }
+                agentRegistrationId = if ($ids.ContainsKey('agentRegistrationId')) { [string]$ids.agentRegistrationId } else { $null }
+                creationStatus = 'evaluatedConfiguration'
+                sourceManifestPath = $resolvedPath
+                componentStatus = [ordered]@{
+                    blueprint = if ([string]$agent.setupStatus -eq 'created') { 'created' } else { 'unknown' }
+                    blueprintPrincipal = if ([string]$agent.setupStatus -eq 'created') { 'created' } else { 'unknown' }
+                    agentIdentity = if ([string]$agent.setupStatus -eq 'created') { 'created' } else { 'unknown' }
+                    agentRegistration = if ([string]$agent.setupStatus -eq 'created') { 'created' } else { 'unknown' }
+                }
+                errors = @($agent.errors)
+            }
+        }
+    )
+
+    if ($records.Count -lt 1) {
+        throw "Evaluated-agent manifest '$resolvedPath' contains no completed Agent 365 configurations."
+    }
+    return [ordered]@{
+        path = $resolvedPath
+        tenantId = [string]$source.tenantId
+        agents = $records
+    }
+}
+
 $resolvedCatalogPath = (Resolve-Path -LiteralPath $CatalogPath).Path
 $resolvedAiAgentCatalogPath = (Resolve-Path -LiteralPath $AiAgentCatalogPath).Path
 $resolvedEndpointRosterPath = (Resolve-Path -LiteralPath $EndpointRosterPath).Path
@@ -608,6 +682,17 @@ $allAgentDefinitions = @($aiAgentCatalog.agents)
 $random = [System.Random]::new($RandomSeed)
 $allEndpoints = @(Get-ShuffledItems -Items @($endpointRoster.endpoints) -Random $random)
 $allMailboxAliases = @($mailboxRoster.mailboxes)
+$evaluatedAgentSource = $null
+if (-not [string]::IsNullOrWhiteSpace($EvaluatedAgentManifestPath)) {
+    if (-not $CreateDemoAiAgents) {
+        throw 'EvaluatedAgentManifestPath requires CreateDemoAiAgents.'
+    }
+    $evaluatedAgentSource = ConvertFrom-EvaluatedAgentManifest `
+        -Path $EvaluatedAgentManifestPath `
+        -ExpectedAdminUpn $GlobalAdminUpn `
+        -AgentDefinitions $allAgentDefinitions
+    $DemoAgentCount = @($evaluatedAgentSource.agents).Count
+}
 
 if ($allAttacks.Count -lt 50) {
     throw "The attack catalog contains only $($allAttacks.Count) entries; 50 are required."
@@ -639,7 +724,10 @@ foreach ($attack in @($allAttacks | Select-Object -Skip ($StartAt - 1) -First $t
     $attack['aiDefinitionIndex'] = $null
     $selectedAttacks.Add($attack)
 }
-$plannedAgentPoolCount = if ($CreateDemoAiAgents) {
+$plannedAgentPoolCount = if ($null -ne $evaluatedAgentSource) {
+    @($evaluatedAgentSource.agents).Count
+}
+elseif ($CreateDemoAiAgents) {
     $DemoAgentCount
 }
 else {
@@ -694,6 +782,7 @@ if (-not $Execute) {
         Version       = $ProjectVersion
         IncidentCount = $selectedAttacks.Count
         DemoAgentCount = if ($CreateDemoAiAgents) { $DemoAgentCount } else { 0 }
+        AgentMode      = if ($null -ne $evaluatedAgentSource) { 'evaluated' } elseif ($CreateDemoAiAgents) { 'inventory' } else { 'none' }
         AiIncidentCount = $AiIncidentCount
         StartAt       = $StartAt
         Plan          = $plan
@@ -704,7 +793,12 @@ $totalAlertCount = ($plan | Measure-Object -Property Alerts -Sum).Sum
 $target = "Microsoft Defender tenant selected by $GlobalAdminUpn"
 $confirmationAction = "Create $($selectedAttacks.Count) incidents containing exactly $totalAlertCount alerts"
 if ($CreateDemoAiAgents) {
-    $confirmationAction += ", plus $DemoAgentCount dormant demo AI agents; $AiIncidentCount incident(s) will use manual AI proxy stories"
+    if ($null -ne $evaluatedAgentSource) {
+        $confirmationAction += ", referencing $DemoAgentCount evaluated Agent 365 configuration(s) already recorded in a lab manifest; $AiIncidentCount incident(s) will use manual AI proxy stories"
+    }
+    else {
+        $confirmationAction += ", plus $DemoAgentCount inventory-only demo AI agents; $AiIncidentCount incident(s) will use manual AI proxy stories"
+    }
 }
 if (-not $PSCmdlet.ShouldProcess($target, $confirmationAction)) {
     return
@@ -752,6 +846,8 @@ else {
         requestedCount    = $IncidentCount
         requestedAlertCount = $totalAlertCount
         requestedDemoAgentCount = if ($CreateDemoAiAgents) { $DemoAgentCount } else { 0 }
+        agentMode         = if ($null -ne $evaluatedAgentSource) { 'evaluated' } elseif ($CreateDemoAiAgents) { 'inventory' } else { 'none' }
+        evaluatedAgentManifestPath = if ($null -ne $evaluatedAgentSource) { [string]$evaluatedAgentSource.path } else { $null }
         requestedAiIncidentCount = $AiIncidentCount
         startAt           = $StartAt
         completedCount    = 0
@@ -760,8 +856,8 @@ else {
         discoveredMailboxCount = 0
         capabilities      = [ordered]@{
             agent365License = 'notDirectlyVerified'
-            entraAgentId = if ($CreateDemoAiAgents) { 'pending' } else { 'notRequested' }
-            agentRegistry = if ($CreateDemoAiAgents) { 'pending' } else { 'notRequested' }
+            entraAgentId = if ($null -ne $evaluatedAgentSource) { 'availableFromEvaluatedManifest' } elseif ($CreateDemoAiAgents) { 'pending' } else { 'notRequested' }
+            agentRegistry = if ($null -ne $evaluatedAgentSource) { 'availableFromEvaluatedManifest' } elseif ($CreateDemoAiAgents) { 'pending' } else { 'notRequested' }
             defenderSecurityForAi = if ($AiIncidentCount -gt 0) { 'manualProxyOnly' } else { 'notRequested' }
         }
         agents            = @()
@@ -775,7 +871,7 @@ Save-RunManifest -Manifest $manifest -Path $manifestPath
 $context = $null
 $executionError = $null
 try {
-    $context = Connect-BulkSeederGraph -LoginHint $GlobalAdminUpn -DeviceCode:$UseDeviceCode -IncludeAgentScopes:$CreateDemoAiAgents
+    $context = Connect-BulkSeederGraph -LoginHint $GlobalAdminUpn -DeviceCode:$UseDeviceCode -IncludeAgentScopes:($CreateDemoAiAgents -and $null -eq $evaluatedAgentSource)
     $manifest.tenantId = [string]$context.TenantId
     $manifest.signedInAccount = [string]$context.Account
 
@@ -790,11 +886,17 @@ try {
     }
 
     $ownerIdentity = @($tenantIdentities | Where-Object { [string]$_.userPrincipalName -ieq $GlobalAdminUpn } | Select-Object -First 1)
-    if ($CreateDemoAiAgents -and ($ownerIdentity.Count -eq 0 -or [string]::IsNullOrWhiteSpace([string]$ownerIdentity[0].id))) {
+    if ($CreateDemoAiAgents -and $null -eq $evaluatedAgentSource -and ($ownerIdentity.Count -eq 0 -or [string]::IsNullOrWhiteSpace([string]$ownerIdentity[0].id))) {
         throw "The signed-in owner '$GlobalAdminUpn' could not be resolved to a tenant user object."
     }
 
-    if ($CreateDemoAiAgents -and @($manifest.agents).Count -eq 0) {
+    if ($null -ne $evaluatedAgentSource -and @($manifest.agents).Count -eq 0) {
+        $manifest.agents = @($evaluatedAgentSource.agents)
+        $manifest.capabilities.entraAgentId = 'availableFromEvaluatedManifest'
+        $manifest.capabilities.agentRegistry = 'availableFromEvaluatedManifest'
+        Save-RunManifest -Manifest $manifest -Path $manifestPath
+    }
+    elseif ($CreateDemoAiAgents -and @($manifest.agents).Count -eq 0) {
         Write-Host "Creating up to $DemoAgentCount dormant demo AI agent identity set(s)..." -ForegroundColor Cyan
         $skipAgentRegistration = $false
         $registryDenialWasReported = $false

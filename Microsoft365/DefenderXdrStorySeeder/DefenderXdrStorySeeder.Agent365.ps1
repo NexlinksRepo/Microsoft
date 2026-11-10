@@ -1,7 +1,7 @@
 #requires -Version 7.2
 
 Set-StrictMode -Version Latest
-$script:AgentSeederVersion = '0.2.4-beta'
+$script:AgentSeederVersion = '0.3.1-beta'
 
 function Get-AgentGraphErrorInfo {
     param([Parameter(Mandatory)]$ErrorRecord)

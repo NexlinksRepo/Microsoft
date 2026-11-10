@@ -27,7 +27,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-$ProjectVersion = '0.2.4-beta'
+$ProjectVersion = '0.3.1-beta'
 
 . (Join-Path $PSScriptRoot 'DefenderXdrStorySeeder.Authentication.ps1')
 

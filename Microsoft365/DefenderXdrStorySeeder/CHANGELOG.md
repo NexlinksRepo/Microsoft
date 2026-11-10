@@ -3,6 +3,59 @@
 All notable changes to Defender XDR Story Seeder are documented here. Versions follow Semantic
 Versioning. Tags use the repository convention `defender-xdr-story-seeder/v<version>`.
 
+## 0.3.1-beta — 2026-11-10
+
+- Refresh the current process PATH before and after Agent 365 CLI discovery so a newly installed
+  current-user `a365` command is usable immediately and remains available in later PowerShell
+  sessions.
+- Detect an existing global Agent 365 CLI tool and update it; otherwise install it, while keeping
+  installer messages separate from the single executable path returned to the provisioner.
+- Run `a365 setup requirements` once before creating any agent resources and store its live output
+  in the run manifest and a dedicated prerequisite log.
+- Stop before provisioning with an actionable error when Azure authentication, subscription,
+  role, tenant enrollment, or Agent 365 client prerequisites fail.
+- Stream Agent 365 output to the terminal as it happens instead of appearing idle while WAM,
+  consent, or setup is active.
+- Reuse the successful preflight for each agent with `--skip-requirements`, avoiding repeated
+  prerequisite checks and authentication prompts during a bulk run.
+
+## 0.3.0-beta — 2026-11-10
+
+- Add a supported evaluated-agent lab path that uses the Microsoft Agent 365 CLI to provision
+  linked blueprints, agent identities, registrations, consented profile permissions, and optional
+  governed MCP tooling.
+- Add low, medium, and high target-risk profiles with explicit instructions, authentication modes,
+  delegated Microsoft Graph scopes, MCP servers, and documented expected posture signals.
+- Keep the requested profile advisory and state truthfully that Microsoft Defender calculates the
+  final risk level asynchronously and might return a different result or `Not evaluated`.
+- Store Agent 365 generated configuration and credentials only beneath the current user's local
+  application-data folder; write only non-secret IDs and status to the project run manifest.
+- Add dedicated manifest-driven cleanup that removes only the recorded Agent 365 instances and
+  blueprints, leaves Defender alerts and incidents unchanged, and removes local secret-bearing
+  state only after successful tenant cleanup.
+- Make evaluated agents the default mode of the main bulk launcher, pass the created agent manifest
+  directly into incident seeding, and cycle AI stories through that same agent pool.
+- Make the normal bulk cleanup launcher also clean evaluated agents referenced by its run manifests,
+  while retaining repeat-safe cleanup markers and strict manifest scoping.
+- Reuse the original evaluated-agent manifest automatically when resuming a partial bulk run so a
+  timeout cannot silently create a duplicate agent set.
+- Add a separate, confirmation-protected current-user Graph authentication cache cleanup script for
+  deliberately forcing a fresh sign-in without changing tenant data.
+- Repair historical cleanup by revisiting exact incident IDs from a selected seed manifest after
+  their alerts are already resolved, and explicitly remove recorded child identities and blueprint
+  principals in addition to registrations and blueprints.
+- Report a `404` agent-object check as source-verified absence without claiming that the separately
+  indexed Microsoft 365 Agent Registry has already refreshed.
+- Automatically install the Microsoft .NET 8 SDK through WinGet, with Windows elevation and
+  post-install verification, before installing the Agent 365 CLI when the SDK is missing.
+- Prepare every launcher for nested package scripts by unblocking the extracted `.ps1` files and
+  applying `RemoteSigned` only to the current PowerShell process; never change the user or machine
+  execution policy and never use `Bypass`.
+- Keep `.NET` tool-install messages out of the Agent 365 CLI path return value so a first-run CLI
+  installation continues directly into evaluated-agent provisioning.
+- Preserve the original inventory-only and Defender incident seeding paths for tenants that don't
+  meet the Agent 365 CLI, licensing, consent, or service-rollout prerequisites.
+
 ## 0.2.4-beta — 2026-11-09
 
 - Rename newly created agent blueprints, principals, identities, and registry cards to use the exact

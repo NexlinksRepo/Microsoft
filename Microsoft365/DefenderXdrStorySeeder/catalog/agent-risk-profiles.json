@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "profiles": [
+    {
+      "id": "low",
+      "targetRisk": "low",
+      "displayLabel": "Constrained Review Agent",
+      "authMode": "obo",
+      "mcpServers": [],
+      "graphDelegatedScopes": ["User.Read"],
+      "description": "Reviews a narrowly scoped demo request and requires human confirmation before any action.",
+      "instructions": "Operate only on the specific demo item supplied by the signed-in user. Read the minimum data required. Never send, delete, modify, or share content. Refuse requests outside the stated task and require explicit human confirmation before any consequential action.",
+      "expectedSignals": [
+        "Narrow delegated identity context",
+        "No MCP write tools",
+        "Strong restrictive instructions"
+      ]
+    },
+    {
+      "id": "medium",
+      "targetRisk": "medium",
+      "displayLabel": "Business Workflow Agent",
+      "authMode": "obo",
+      "mcpServers": ["mcp_MailTools"],
+      "graphDelegatedScopes": ["User.Read", "Files.Read", "Calendars.Read"],
+      "description": "Assists with demo business workflows using delegated read access and a governed Microsoft 365 tool.",
+      "instructions": "Use only approved tenant data needed for the current demo workflow. You may inspect files, calendar context, and mailbox metadata. Draft recommendations, but require user confirmation before sending messages, changing records, or sharing information outside the organization.",
+      "expectedSignals": [
+        "Broader delegated read access",
+        "Governed MCP server with write-capable tools present",
+        "Human approval required for consequential actions"
+      ]
+    },
+    {
+      "id": "high",
+      "targetRisk": "high",
+      "displayLabel": "Autonomous Operations Agent",
+      "authMode": "both",
+      "mcpServers": ["mcp_MailTools"],
+      "graphDelegatedScopes": ["User.Read", "Files.ReadWrite.All", "Mail.ReadWrite", "Calendars.ReadWrite"],
+      "description": "Runs approved demo operations with broad delegated write access and governed Microsoft 365 tools.",
+      "instructions": "Operate autonomously within the dedicated MXDR demo boundary. You may create, update, send, and organize demo content required by the workflow without per-action approval. Never access production secrets, administrative settings, role assignments, or resources outside the demo boundary.",
+      "expectedSignals": [
+        "Broad delegated read/write access",
+        "OBO and service-to-service identity grants",
+        "Autonomous instructions",
+        "Governed MCP server with send, update, and delete tools"
+      ]
+    }
+  ]
+}

@@ -1,5 +1,54 @@
 # Troubleshooting
 
+## Agent 365 CLI is missing
+
+Version 0.3.1-beta refreshes the current-user PATH and installs or updates the CLI automatically
+before evaluated provisioning. It then runs one prerequisite check and stops before creating an
+agent if the CLI or Azure requirements fail. For a manual repair, install the .NET 8 SDK or later
+(the desktop/runtime alone is insufficient), then run:
+
+```powershell
+dotnet tool install --global Microsoft.Agents.A365.DevTools.Cli
+```
+
+If installation succeeds but `a365` is not found in an existing PowerShell window, refresh PATH or
+open a new window:
+
+```powershell
+$env:Path = @(
+    [Environment]::GetEnvironmentVariable('Path', 'Machine')
+    [Environment]::GetEnvironmentVariable('Path', 'User')
+) -join [IO.Path]::PathSeparator
+```
+
+## Agent 365 prerequisite validation fails
+
+The evaluated launcher runs `a365 setup requirements` before creating resources. Review the
+recorded `a365-requirements.log`. Confirm `az account show` reports a real subscription in the same
+tenant, the operator has Azure Contributor and the required Entra Agent ID role, and tenant/client
+checks pass. Inventory-only mode remains available when those requirements can't be met.
+
+## Evaluated setup creates only part of an agent
+
+The Agent 365 CLI can create a blueprint before a later identity, registration, consent, or MCP
+step fails. The lab manifest is written before every setup and records the per-agent local state
+path. Run `Start-DefenderEvaluatedAgentCleanup.ps1` against that manifest; cleanup is designed to
+handle partial resources. Do not delete the local state directory before tenant cleanup succeeds.
+
+## MCP configuration or consent fails
+
+Agent 365 tooling is tenant-, region-, policy-, and rollout-dependent. Confirm `mcp_MailTools`
+appears in `a365 develop list-available`, that Agent 365 Tools is present in the tenant, and that the
+administrator can grant the server's permissions. A failed MCP step is recorded as `failed` or
+`manifestOnly`; it does not cause the script to claim the tools are active.
+
+## Defender still shows Not evaluated
+
+Wait for Agent 365 and Defender inventory synchronization, then verify Security for AI onboarding,
+licensing, the blueprint link, consented permissions, and MCP metadata. Configuration-only signals
+do not satisfy every risk indicator. Runtime- and activity-based indicators require a hosted agent
+that exports Agent 365 observability data. The script cannot force Defender to assign a rating.
+
 ## The confirmation says “Create 3 synthetic alerts and one incident”
 
 You launched an obsolete proof-of-concept package. Enter `N`, extract the current release into a new

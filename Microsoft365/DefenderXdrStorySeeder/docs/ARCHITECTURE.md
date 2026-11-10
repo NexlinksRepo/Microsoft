@@ -1,5 +1,41 @@
 # Architecture and data flow
 
+## Evaluated-agent lab boundary
+
+Version 0.3 adds an independent Agent 365 provisioning boundary alongside the Defender incident
+seeder. `Invoke-DefenderEvaluatedAgentLab.ps1` builds a deterministic profile plan, writes
+per-agent configuration beneath the current user's local application-data directory, and delegates
+tenant mutation to Microsoft's `a365` CLI. It does not reuse the inventory-only Graph construction
+functions because the CLI is the supported source for linked registrations, identity grants,
+blueprint consent, and tooling metadata.
+
+```text
+agent-risk-profiles.json
+          |
+          v
+evaluated-agent planner
+          |
+          +--> local a365 config + instructions + ToolingManifest
+          |
+          +--> a365 setup all
+          +--> a365 setup permissions custom
+          +--> a365 setup permissions mcp
+          |
+          v
+non-secret evaluated-agent-lab-run manifest
+          |
+          v
+a365 cleanup instance + cleanup blueprint
+```
+
+The project manifest is incremental and contains no client secret or token. Secret-bearing CLI
+state remains beneath `%LOCALAPPDATA%\MXDRDemoAgentLab\<runId>`. Cleanup deletes local state only
+after both recorded tenant cleanup operations succeed. Defender incident and alert APIs are outside
+this boundary.
+
+The low/medium/high profile value is an input to configuration, not an output from Defender.
+Defender independently evaluates the resulting supported signals and can assign a different rating.
+
 ## Components
 
 | Component | Responsibility |
