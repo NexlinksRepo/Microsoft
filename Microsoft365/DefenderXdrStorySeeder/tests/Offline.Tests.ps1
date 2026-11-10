@@ -208,7 +208,7 @@ Assert-Condition -Condition ($agentHelperText.Contains('Get-AgentGraphErrorInfo'
 Assert-Condition -Condition ($registrationRetryText.Contains('Register-DemoAiAgent')) -Message 'Registration-only retry reuses existing agent identities'
 Assert-Condition -Condition (-not $registrationRetryText.Contains('New-DemoAiAgent')) -Message 'Registration-only retry cannot create duplicate agent identities'
 Assert-Condition -Condition ($registrationRetryText.Contains("'AgentRegistration.ReadWrite.All' -notin")) -Message 'Registration retry verifies the delegated scope is present'
-Assert-Condition -Condition ($cleanupText.Contains('agentRegistrations/$registrationId')) -Message 'Cleanup removes only recorded registry IDs'
+Assert-Condition -Condition ($cleanupText.Contains('copilot/agentRegistrations/$([uri]::EscapeDataString([string]$agent.agentRegistrationId))')) -Message 'Cleanup removes only recorded registry IDs'
 Assert-Condition -Condition ($cleanupText.Contains('microsoft.graph.agentIdentityBlueprint')) -Message 'Cleanup uses blueprint cascade deletion'
 foreach ($fragment in @(
     'copilot/agentRegistrations/'
@@ -237,6 +237,11 @@ Assert-Condition -Condition (-not $evaluatedCleanupText.Contains('/security/aler
 Assert-Condition -Condition (-not $evaluatedCleanupText.Contains('/security/incidents')) -Message 'Evaluated-agent cleanup does not access Defender incidents'
 Assert-Condition -Condition ($cleanupText.Contains("creationStatus -eq 'evaluatedConfiguration'")) -Message 'Graph cleanup skips evaluated agents owned by Agent 365 CLI cleanup'
 Assert-Condition -Condition ($cleanupLauncherText.Contains('Invoke-DefenderEvaluatedAgentCleanup.ps1')) -Message 'Bulk cleanup launcher includes evaluated-agent cleanup'
+Assert-Condition -Condition ($cleanupLauncherText.Contains('-SeedManifestPath $SeedManifestPath')) -Message 'Bulk cleanup launcher accepts an exact historical seed manifest'
+Assert-Condition -Condition ($cleanupText.Contains('Get-SeedManifestScope')) -Message 'Cleanup recovers incident and alert IDs from the selected seed manifest'
+Assert-Condition -Condition ($cleanupText.Contains("type = 'agentIdentity'")) -Message 'Bulk cleanup explicitly removes recorded agent identities'
+Assert-Condition -Condition ($cleanupText.Contains("type = 'agentIdentityBlueprintPrincipal'")) -Message 'Bulk cleanup explicitly removes recorded blueprint principals'
+Assert-Condition -Condition ($cleanupText.Contains("result = 'verifiedAbsent'")) -Message 'Cleanup distinguishes source-verified absence from a completed portal refresh'
 
 $agentCleanupTokens = $null
 $agentCleanupParseErrors = $null

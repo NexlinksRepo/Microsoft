@@ -6,6 +6,9 @@ param(
     [ValidatePattern('^[^@\s]+@[^@\s]+\.[^@\s]+$')]
     [string]$GlobalAdminUpn,
 
+    [Parameter(Position = 1)]
+    [string]$SeedManifestPath,
+
     [switch]$UseDeviceCode
 )
 
@@ -15,13 +18,24 @@ $ErrorActionPreference = 'Stop'
 $cleanupPath = Join-Path $PSScriptRoot 'Invoke-DefenderBulkCleanup.ps1'
 $bulkResult = & $cleanupPath `
     -GlobalAdminUpn $GlobalAdminUpn `
+    -SeedManifestPath $SeedManifestPath `
     -Execute `
     -UseDeviceCode:$UseDeviceCode
 
 $evaluatedManifestPaths = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
-$artifactPath = Join-Path $PSScriptRoot 'artifacts'
-if (Test-Path -LiteralPath $artifactPath -PathType Container) {
-    foreach ($seedFile in @(Get-ChildItem -LiteralPath $artifactPath -Filter 'bulk-seed-run-*.json' -File)) {
+$seedFiles = if (-not [string]::IsNullOrWhiteSpace($SeedManifestPath)) {
+    @(Get-Item -LiteralPath (Resolve-Path -LiteralPath $SeedManifestPath).Path)
+}
+else {
+    $artifactPath = Join-Path $PSScriptRoot 'artifacts'
+    if (Test-Path -LiteralPath $artifactPath -PathType Container) {
+        @(Get-ChildItem -LiteralPath $artifactPath -Filter 'bulk-seed-run-*.json' -File)
+    }
+    else {
+        @()
+    }
+}
+foreach ($seedFile in $seedFiles) {
         try {
             $seedManifest = Get-Content -LiteralPath $seedFile.FullName -Raw | ConvertFrom-Json -AsHashtable -Depth 50
             if ($seedManifest.ContainsKey('evaluatedAgentManifestPath') -and
@@ -37,7 +51,6 @@ if (Test-Path -LiteralPath $artifactPath -PathType Container) {
         catch {
             Write-Warning "Could not inspect '$($seedFile.FullName)' for evaluated-agent cleanup: $($_.Exception.Message)"
         }
-    }
 }
 
 $evaluatedCleanupResults = @()

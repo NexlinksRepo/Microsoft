@@ -385,6 +385,22 @@ pwsh -File .\Invoke-DefenderBulkCleanup.ps1 `
   -GlobalAdminUpn 'global.admin@contoso.com'
 ```
 
+To repair or finish cleanup for an older run, supply that run's manifest as the second argument:
+
+```powershell
+pwsh -File .\Start-DefenderBulkCleanup.ps1 `
+  'global.admin@contoso.com' `
+  'C:\path\to\artifacts\bulk-seed-run-20261110-013043.json'
+```
+
+Manifest-driven cleanup revisits the exact recorded alert and incident IDs even when every alert is
+already resolved. This prevents an incident shell from being missed merely because it no longer has
+an active alert. It also directly attempts the recorded registration, blueprint, child identity,
+and blueprint-principal deletions. A `404` is reported as **verified absent at the source endpoint**,
+not as proof that the separately indexed Microsoft 365 Agent Registry has refreshed. Registry rows
+can remain visible temporarily after their source objects are deleted; use **Refresh** in the admin
+center after synchronization completes.
+
 `-AllManualAlerts` is intentionally available only on the underlying cleanup script. It selects
 every active Manual alert, including alerts created by other people or tools, and should normally be
 avoided.
@@ -435,7 +451,7 @@ avoided.
 | `GlobalAdminUpn` | Required | Login hint for delegated authentication. |
 | `CatalogPath` | `catalog\attack-catalog.json` | Catalog used to recognize seeded alert titles. |
 | `AiAgentCatalogPath` | `catalog\ai-agent-catalog.json` | Catalog used to recognize AI proxy alert titles. |
-| `SeedManifestPath` | All local seed manifests | Restrict agent cleanup to one manifest. |
+| `SeedManifestPath` | All local seed manifests | Restrict cleanup to one manifest and revisit its exact alert, incident, and agent object IDs. |
 | `SkipDemoAgentCleanup` | Off | Resolve alerts/incidents without removing recorded agents. |
 | `DelayMilliseconds` | `500` | Delay between update operations; accepted range is 0–5000. |
 | `IncludeLegacyPoc` | `true` | Recognize the three older proof-of-concept alert titles. |

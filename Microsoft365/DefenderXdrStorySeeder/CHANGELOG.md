@@ -25,6 +25,11 @@ Versioning. Tags use the repository convention `defender-xdr-story-seeder/v<vers
   timeout cannot silently create a duplicate agent set.
 - Add a separate, confirmation-protected current-user Graph authentication cache cleanup script for
   deliberately forcing a fresh sign-in without changing tenant data.
+- Repair historical cleanup by revisiting exact incident IDs from a selected seed manifest after
+  their alerts are already resolved, and explicitly remove recorded child identities and blueprint
+  principals in addition to registrations and blueprints.
+- Report a `404` agent-object check as source-verified absence without claiming that the separately
+  indexed Microsoft 365 Agent Registry has already refreshed.
 - Preserve the original inventory-only and Defender incident seeding paths for tenants that don't
   meet the Agent 365 CLI, licensing, consent, or service-rollout prerequisites.
 
