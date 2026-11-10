@@ -32,6 +32,9 @@ Versioning. Tags use the repository convention `defender-xdr-story-seeder/v<vers
   indexed Microsoft 365 Agent Registry has already refreshed.
 - Automatically install the Microsoft .NET 8 SDK through WinGet, with Windows elevation and
   post-install verification, before installing the Agent 365 CLI when the SDK is missing.
+- Prepare every launcher for nested package scripts by unblocking the extracted `.ps1` files and
+  applying `RemoteSigned` only to the current PowerShell process; never change the user or machine
+  execution policy and never use `Bypass`.
 - Preserve the original inventory-only and Defender incident seeding paths for tenants that don't
   meet the Agent 365 CLI, licensing, consent, or service-rollout prerequisites.
 

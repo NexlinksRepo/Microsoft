@@ -161,6 +161,11 @@ inspect the files and then unblock only this extracted package:
 Get-ChildItem -LiteralPath . -Filter '*.ps1' | Unblock-File
 ```
 
+The packaged launchers also repeat this preparation immediately before invoking their companion
+scripts. They set `RemoteSigned` only for the current PowerShell process; they do not alter the
+current-user or computer policy and do not use an execution-policy bypass. An organization-enforced
+`AllSigned` policy still requires organization-approved code signing.
+
 ## Quick start
 
 Only the administrator UPN is required. The launcher asks for an incident count (default `50`), an

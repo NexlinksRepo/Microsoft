@@ -22,6 +22,20 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+function Initialize-PackageScriptExecution {
+    try {
+        Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned -Force -ErrorAction Stop
+    }
+    catch {
+        Write-Warning "Could not set the current PowerShell process to RemoteSigned: $($_.Exception.Message)"
+    }
+
+    Get-ChildItem -LiteralPath $PSScriptRoot -Filter '*.ps1' -File |
+        ForEach-Object { Unblock-File -LiteralPath $_.FullName -ErrorAction Stop }
+}
+
+Initialize-PackageScriptExecution
+
 function Read-NumberWithDefault {
     param(
         [Parameter(Mandatory)][string]$Prompt,
