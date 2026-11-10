@@ -1,5 +1,18 @@
 # Catalog and evidence model
 
+## Evaluated-agent risk profiles
+
+`catalog/agent-risk-profiles.json` defines the three Agent 365 posture targets used by the separate
+evaluated-agent lab launcher. Each profile contains an authentication mode, Microsoft Graph
+delegated scopes, governed MCP server IDs, description, agent instructions, and expected posture
+signals. The IDs must remain `low`, `medium`, and `high`; the launcher can accept any ordered subset
+and cycles through that selection for the requested agent count.
+
+These names are targeting labels only. They must never be written to documentation or manifests as
+Microsoft-calculated ratings. Keep administrative write scopes, directory roles, and production
+resource identifiers out of this catalog. MCP server IDs are resolved by the Agent 365 CLI and can
+be unavailable in tenants where the corresponding preview or policy is not enabled.
+
 ## Attack catalog
 
 `catalog/attack-catalog.json` contains an `attacks` array with exactly 50 objects for version

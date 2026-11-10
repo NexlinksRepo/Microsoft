@@ -30,7 +30,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-$ProjectVersion = '0.2.4-beta'
+$ProjectVersion = '0.3.0-beta'
 
 . (Join-Path $PSScriptRoot 'DefenderXdrStorySeeder.Authentication.ps1')
 
@@ -221,6 +221,12 @@ function Get-GeneratedAgentRecords {
                 continue
             }
             foreach ($agent in @($seedManifest.agents)) {
+                # Evaluated configurations are removed through the Agent 365 CLI so its
+                # generated identity, registration, permission, and local-secret state
+                # remain coordinated. The bulk cleanup launcher calls that dedicated path.
+                if ([string]$agent.creationStatus -eq 'evaluatedConfiguration') {
+                    continue
+                }
                 $key = if (-not [string]::IsNullOrWhiteSpace([string]$agent.blueprintId)) {
                     [string]$agent.blueprintId
                 }
