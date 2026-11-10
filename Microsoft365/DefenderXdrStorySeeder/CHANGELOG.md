@@ -35,6 +35,8 @@ Versioning. Tags use the repository convention `defender-xdr-story-seeder/v<vers
 - Prepare every launcher for nested package scripts by unblocking the extracted `.ps1` files and
   applying `RemoteSigned` only to the current PowerShell process; never change the user or machine
   execution policy and never use `Bypass`.
+- Keep `.NET` tool-install messages out of the Agent 365 CLI path return value so a first-run CLI
+  installation continues directly into evaluated-agent provisioning.
 - Preserve the original inventory-only and Defender incident seeding paths for tenants that don't
   meet the Agent 365 CLI, licensing, consent, or service-rollout prerequisites.
 

@@ -236,6 +236,8 @@ Assert-Condition -Condition ($evaluatedAgentText.Contains("@('setup', 'permissio
 Assert-Condition -Condition ($evaluatedAgentText.Contains('Microsoft.DotNet.SDK.8')) -Message 'Evaluated-agent launcher can install the required .NET 8 SDK'
 Assert-Condition -Condition ($evaluatedAgentText.Contains("'--exact'")) -Message 'Automatic .NET installation selects the exact Microsoft WinGet package'
 Assert-Condition -Condition ($evaluatedAgentText.Contains('-Verb RunAs')) -Message 'Automatic .NET installation requests Windows elevation'
+Assert-Condition -Condition ($evaluatedAgentText.Contains('$installOutput = @(& $dotnetPath tool install')) -Message 'Agent 365 CLI installer output is captured instead of contaminating the returned executable path'
+Assert-Condition -Condition ($evaluatedAgentText.Contains('return [string]$command.Source')) -Message 'Agent 365 CLI discovery returns exactly one string path'
 Assert-Condition -Condition ($evaluatedAgentText.Contains("riskRatingGuaranteed = `$false")) -Message 'Evaluated-agent manifest does not claim a guaranteed Defender rating'
 Assert-Condition -Condition ($evaluatedCleanupText.Contains("@('cleanup', 'instance')")) -Message 'Evaluated-agent cleanup removes the recorded instance through the Agent 365 CLI'
 Assert-Condition -Condition ($evaluatedCleanupText.Contains("@('cleanup', 'blueprint')")) -Message 'Evaluated-agent cleanup removes the recorded blueprint through the Agent 365 CLI'

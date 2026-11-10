@@ -135,12 +135,12 @@ function Get-Agent365CliCommand {
 
     $command = Get-Command a365 -ErrorAction SilentlyContinue
     if ($null -ne $command) {
-        return $command.Source
+        return [string]$command.Source
     }
 
     $candidate = Join-Path ([Environment]::GetFolderPath('UserProfile')) '.dotnet\tools\a365.exe'
     if (Test-Path -LiteralPath $candidate -PathType Leaf) {
-        return $candidate
+        return [string]$candidate
     }
 
     if (-not $AllowInstall) {
@@ -156,19 +156,21 @@ function Get-Agent365CliCommand {
     }
 
     Write-Host 'Installing the Microsoft Agent 365 CLI for the current user...' -ForegroundColor Cyan
-    & $dotnetPath tool install --global Microsoft.Agents.A365.DevTools.Cli
-    if ($LASTEXITCODE -ne 0) {
-        throw "Agent 365 CLI installation failed with exit code $LASTEXITCODE."
+    $installOutput = @(& $dotnetPath tool install --global Microsoft.Agents.A365.DevTools.Cli 2>&1)
+    $installExitCode = $LASTEXITCODE
+    $installOutput | ForEach-Object { Write-Host ([string]$_) }
+    if ($installExitCode -ne 0) {
+        throw "Agent 365 CLI installation failed with exit code $installExitCode."
     }
 
     $command = Get-Command a365 -ErrorAction SilentlyContinue
     if ($null -eq $command) {
         if (Test-Path -LiteralPath $candidate -PathType Leaf) {
-            return $candidate
+            return [string]$candidate
         }
         throw 'Agent 365 CLI was installed but a365 could not be located. Open a new PowerShell window and retry.'
     }
-    return $command.Source
+    return [string]$command.Source
 }
 
 function Invoke-Agent365Cli {
