@@ -2,7 +2,9 @@
 
 ## Two Agent 365 paths
 
-Version 0.3 retains the original inventory-only path and adds an evaluated-agent lab path. The main
+Version 0.3 retains the original inventory-only path and adds an evaluated-agent lab path. Version
+0.3.1 adds a single live prerequisite preflight before provisioning and reuses that successful
+check across the requested agent set. The main
 bulk launcher now orchestrates evaluated provisioning explicitly before incident seeding; the
 underlying implementations remain separate so a preview or direct incident-seeding run never grants
 agent permissions or creates credentials.

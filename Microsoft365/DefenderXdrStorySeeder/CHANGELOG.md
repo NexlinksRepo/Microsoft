@@ -3,6 +3,22 @@
 All notable changes to Defender XDR Story Seeder are documented here. Versions follow Semantic
 Versioning. Tags use the repository convention `defender-xdr-story-seeder/v<version>`.
 
+## 0.3.1-beta — 2026-11-10
+
+- Refresh the current process PATH before and after Agent 365 CLI discovery so a newly installed
+  current-user `a365` command is usable immediately and remains available in later PowerShell
+  sessions.
+- Detect an existing global Agent 365 CLI tool and update it; otherwise install it, while keeping
+  installer messages separate from the single executable path returned to the provisioner.
+- Run `a365 setup requirements` once before creating any agent resources and store its live output
+  in the run manifest and a dedicated prerequisite log.
+- Stop before provisioning with an actionable error when Azure authentication, subscription,
+  role, tenant enrollment, or Agent 365 client prerequisites fail.
+- Stream Agent 365 output to the terminal as it happens instead of appearing idle while WAM,
+  consent, or setup is active.
+- Reuse the successful preflight for each agent with `--skip-requirements`, avoiding repeated
+  prerequisite checks and authentication prompts during a bulk run.
+
 ## 0.3.0-beta — 2026-11-10
 
 - Add a supported evaluated-agent lab path that uses the Microsoft Agent 365 CLI to provision

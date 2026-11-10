@@ -28,7 +28,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-$ProjectVersion = '0.3.0-beta'
+$ProjectVersion = '0.3.1-beta'
 $NamePrefix = '[MXDR Demo]'
 $GraphResourceAppId = '00000003-0000-0000-c000-000000000000'
 
@@ -133,6 +133,10 @@ function Install-DotNet8Sdk {
 function Get-Agent365CliCommand {
     param([switch]$AllowInstall)
 
+    $machinePath = [Environment]::GetEnvironmentVariable('Path', 'Machine')
+    $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+    $env:Path = @($machinePath, $userPath, $env:Path) -join [IO.Path]::PathSeparator
+
     $command = Get-Command a365 -ErrorAction SilentlyContinue
     if ($null -ne $command) {
         return [string]$command.Source
@@ -155,14 +159,26 @@ function Get-Agent365CliCommand {
         $dotnetPath = Install-DotNet8Sdk
     }
 
-    Write-Host 'Installing the Microsoft Agent 365 CLI for the current user...' -ForegroundColor Cyan
-    $installOutput = @(& $dotnetPath tool install --global Microsoft.Agents.A365.DevTools.Cli 2>&1)
+    $toolPackageId = 'Microsoft.Agents.A365.DevTools.Cli'
+    $globalTools = @(& $dotnetPath tool list --global 2>&1)
+    $toolVerb = if (@($globalTools | Where-Object { [string]$_ -match '^microsoft\.agents\.a365\.devtools\.cli\s' }).Count -gt 0) {
+        'update'
+    }
+    else {
+        'install'
+    }
+    $toolAction = if ($toolVerb -eq 'update') { 'Updating' } else { 'Installing' }
+    Write-Host "$toolAction the Microsoft Agent 365 CLI for the current user..." -ForegroundColor Cyan
+    $installOutput = @(& $dotnetPath tool $toolVerb --global $toolPackageId 2>&1)
     $installExitCode = $LASTEXITCODE
     $installOutput | ForEach-Object { Write-Host ([string]$_) }
     if ($installExitCode -ne 0) {
         throw "Agent 365 CLI installation failed with exit code $installExitCode."
     }
 
+    $machinePath = [Environment]::GetEnvironmentVariable('Path', 'Machine')
+    $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+    $env:Path = @($machinePath, $userPath, $env:Path) -join [IO.Path]::PathSeparator
     $command = Get-Command a365 -ErrorAction SilentlyContinue
     if ($null -eq $command) {
         if (Test-Path -LiteralPath $candidate -PathType Leaf) {
@@ -188,11 +204,12 @@ function Invoke-Agent365Cli {
             if ($_ -match '\s') { '"' + ($_ -replace '"', '\"') + '"' } else { $_ }
         }) -join ' '
         "[$([DateTime]::UtcNow.ToString('o'))] a365 $rendered" | Add-Content -LiteralPath $LogPath -Encoding utf8
-        $output = @(& $CliPath @Arguments 2>&1)
-        $exitCode = $LASTEXITCODE
-        $output | ForEach-Object {
-            [string]$_ | Tee-Object -FilePath $LogPath -Append | Write-Host
+        & $CliPath @Arguments 2>&1 | ForEach-Object {
+            $line = [string]$_
+            $line | Add-Content -LiteralPath $LogPath -Encoding utf8
+            Write-Host $line
         }
+        $exitCode = $LASTEXITCODE
         if ($exitCode -ne 0 -and -not $AllowFailure) {
             throw "Agent 365 CLI failed with exit code $exitCode. Review '$LogPath'."
         }
@@ -344,12 +361,29 @@ $manifest = [ordered]@{
     cleanupSucceeded = $false
     cleanupCompletedAtUtc = $null
     cleanupManifestPath = $null
+    prerequisiteStatus = 'pending'
+    prerequisiteLogPath = (Join-Path $runStatePath 'a365-requirements.log')
     agents = @()
     error = $null
 }
 Save-EvaluatedAgentManifest -Manifest $manifest -Path $manifestPath
 
 try {
+    Write-Host 'Validating Agent 365, Azure subscription, role, and tenant prerequisites before creating agents...' -ForegroundColor Cyan
+    $prerequisiteResult = Invoke-Agent365Cli `
+        -CliPath $cliPath `
+        -Arguments @('setup', 'requirements') `
+        -WorkingDirectory $runStatePath `
+        -LogPath $manifest.prerequisiteLogPath `
+        -AllowFailure
+    $manifest.prerequisiteStatus = if ($prerequisiteResult.succeeded) { 'passed' } else { 'failed' }
+    if (-not $prerequisiteResult.succeeded) {
+        $manifest.error = "Agent 365 prerequisite validation failed with exit code $($prerequisiteResult.exitCode). No agent provisioning was started."
+        Save-EvaluatedAgentManifest -Manifest $manifest -Path $manifestPath
+        throw "$($manifest.error) Review '$($manifest.prerequisiteLogPath)', correct the reported requirement, and rerun the bulk seeder."
+    }
+    Save-EvaluatedAgentManifest -Manifest $manifest -Path $manifestPath
+
     foreach ($planItem in $plan) {
         $profile = $profileById[[string]$planItem.TargetRisk]
         $safeFolderName = "agent-$($planItem.Sequence.ToString('00'))-$($planItem.TargetRisk)"
@@ -411,7 +445,7 @@ try {
 
         $setupResult = Invoke-Agent365Cli `
             -CliPath $cliPath `
-            -Arguments @('setup', 'all', '--authmode', [string]$planItem.AuthMode) `
+            -Arguments @('setup', 'all', '--skip-requirements', '--authmode', [string]$planItem.AuthMode) `
             -WorkingDirectory $agentPath `
             -LogPath $logPath `
             -AllowFailure

@@ -12,12 +12,13 @@ Seeder version. Each version directory contains the release ZIP produced by that
 | `0.2.2-beta` | `2b58d0a` | `0757565D54F683AD02966C59FF6A19F776093E7AAB94475F6F748A80FFEF833F` |
 | `0.2.3-beta` | `94b27f1` | `FDA8D9C05FE844DC8775AB216C2644D37471D704D34AACDA615796C699D72A56` |
 | `0.2.4-beta` | `b51be83` | `EA38EDD8D0029DA0D1480DEF9C4B4D47040CB47A1C73F6673AD76420A093CC40` |
-| `0.3.0-beta` | `602e640` | `503F7BAB77B7FDD388AF40BA0C1D8915BB73FD6344A44BA1B102B8B65460990D` |
+| `0.3.0-beta` | `417b7cc` | `165BA649B628CB162BB4917EF181938D44B8A293C8CCC45126B5935D2E9C23DB` |
+| `0.3.1-beta` | `abba748` | `259E864C8C8B6B627CF3C7D5854C606E92E4D522CA3DDD7F2498BD370E451AF0` |
 
 To verify a downloaded archive in PowerShell:
 
 ```powershell
-Get-FileHash -Algorithm SHA256 .\Defender-XDR-Story-Seeder-v0.3.0-beta.zip
+Get-FileHash -Algorithm SHA256 .\Defender-XDR-Story-Seeder-v0.3.1-beta.zip
 ```
 
 The archive directories are historical and should not be modified in place. Publish a new version

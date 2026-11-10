@@ -2,15 +2,31 @@
 
 ## Agent 365 CLI is missing
 
-Install the .NET 8 SDK or later (the desktop/runtime alone is insufficient), then run:
+Version 0.3.1-beta refreshes the current-user PATH and installs or updates the CLI automatically
+before evaluated provisioning. It then runs one prerequisite check and stops before creating an
+agent if the CLI or Azure requirements fail. For a manual repair, install the .NET 8 SDK or later
+(the desktop/runtime alone is insufficient), then run:
 
 ```powershell
 dotnet tool install --global Microsoft.Agents.A365.DevTools.Cli
 ```
 
-Alternatively, add `-InstallAgent365Cli` to `Start-DefenderEvaluatedAgentLab.ps1`. If installation
-succeeds but `a365` is not found, open a new PowerShell window so `%USERPROFILE%\.dotnet\tools` is
-added to the process path.
+If installation succeeds but `a365` is not found in an existing PowerShell window, refresh PATH or
+open a new window:
+
+```powershell
+$env:Path = @(
+    [Environment]::GetEnvironmentVariable('Path', 'Machine')
+    [Environment]::GetEnvironmentVariable('Path', 'User')
+) -join [IO.Path]::PathSeparator
+```
+
+## Agent 365 prerequisite validation fails
+
+The evaluated launcher runs `a365 setup requirements` before creating resources. Review the
+recorded `a365-requirements.log`. Confirm `az account show` reports a real subscription in the same
+tenant, the operator has Azure Contributor and the required Entra Agent ID role, and tenant/client
+checks pass. Inventory-only mode remains available when those requirements can't be met.
 
 ## Evaluated setup creates only part of an agent
 

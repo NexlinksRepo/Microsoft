@@ -1,6 +1,6 @@
 # Defender XDR Story Seeder
 
-Current version: **0.3.0-beta**
+Current version: **0.3.1-beta**
 
 Defender XDR Story Seeder creates a disposable, presentation-friendly incident dataset in the
 Microsoft Defender portal without Microsoft Sentinel or a fleet of physical or virtual endpoints.
@@ -36,6 +36,11 @@ launcher. It uses Microsoft's Agent 365 CLI to create
 supported blueprints, linked identities and registrations, consented profile permissions, and
 optional governed MCP tooling. Low, medium, and high are target posture profiles; Defender still
 calculates the actual risk level and can return a different result or `Not evaluated`.
+
+Version 0.3.1 makes that evaluated path self-checking. It installs or updates the current-user
+Agent 365 CLI when needed, refreshes PATH, streams CLI output live, and runs one complete
+`a365 setup requirements` preflight before creating any agent resource. A failed Azure,
+subscription, role, tenant, or client requirement stops the run before provisioning starts.
 
 > This is a security-testing and demonstration utility. Run it only in a tenant where you are
 > authorized to create hundreds of Defender alerts and incidents. A default run creates 50
@@ -107,12 +112,14 @@ See [Architecture and data flow](docs/ARCHITECTURE.md) for the implementation de
   Operator** and **Security Administrator** for the write operations
 - Internet access to Microsoft Graph and PowerShell Gallery on first run
 
-The evaluated-agent lab additionally requires the .NET 8 SDK or later and the Microsoft Agent 365
-CLI. If the SDK is missing, the executing launcher installs Microsoft's `Microsoft.DotNet.SDK.8`
-package through Windows Package Manager and displays a Windows elevation prompt. It then installs
-the Agent 365 CLI for the current user and continues the same run. If Windows reports that a restart
-is required, restart and rerun the launcher. The tenant must have Agent 365 enabled, and the
-signed-in administrator must be able to create agent identity objects and grant the selected OAuth
+The evaluated-agent lab additionally requires the .NET 8 SDK or later, an Azure subscription in the
+same tenant, Azure Contributor access, the required Entra Agent ID role, and the Microsoft Agent 365
+CLI. If the SDK is missing, the launcher installs Microsoft's `Microsoft.DotNet.SDK.8` package
+through Windows Package Manager and displays a Windows elevation prompt. It then installs or
+updates the Agent 365 CLI for the current user, refreshes the current PATH, and runs
+`a365 setup requirements` once before creating anything. If Windows reports that a restart is
+required, restart and rerun the launcher. The tenant must have Agent 365 enabled, and the signed-in
+administrator must be able to create agent identity objects and grant the selected OAuth
 permissions. MCP availability varies by tenant and rollout.
 
 The launcher installs `Microsoft.Graph.Authentication` for the current user if it is not already
