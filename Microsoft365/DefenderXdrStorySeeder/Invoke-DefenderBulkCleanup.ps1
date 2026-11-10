@@ -402,8 +402,12 @@ try {
         [void]$manifestAlertIds.Add([string]$manifestAlertId)
     }
     $matchedAlerts = @($activeAlerts | Where-Object {
-        $manifestAlertIds.Contains([string]$_.id) -or
-        (Test-IsSeederAlert -Alert $_ -KnownTitles $knownTitles -IncludeAllManual:$AllManualAlerts)
+        if (-not [string]::IsNullOrWhiteSpace([string]$seedScope.manifestPath)) {
+            $manifestAlertIds.Contains([string]$_.id)
+        }
+        else {
+            Test-IsSeederAlert -Alert $_ -KnownTitles $knownTitles -IncludeAllManual:$AllManualAlerts
+        }
     })
 
     $matchedAlertIds = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
